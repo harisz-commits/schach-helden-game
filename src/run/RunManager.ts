@@ -562,10 +562,14 @@ export class RunManager {
   /* Battles                                                           */
   /* ---------------------------------------------------------------- */
 
-  buildBattleSetup(encounter: EncounterData): BattleSetup {
+  buildBattleSetup(encounter: EncounterData, participantArmyIds?: ReadonlySet<string>): BattleSetup {
     const asc = ascension(this.run.ascensionLevel);
+    const deployedArmies = this.livingArmies.filter(
+      (army) => !participantArmyIds || participantArmyIds.has(army.id),
+    );
+    const deployedIds = new Set(deployedArmies.map((army) => army.id));
     const battleModifiers: { armyId: string; effects: EffectDefinition[] }[] = this.run.armies
-      .filter((a) => a.alive && a.battleModifiers.length > 0)
+      .filter((army) => deployedIds.has(army.id) && army.battleModifiers.length > 0)
       .map((army) => ({
         armyId: army.id,
         effects: army.battleModifiers.map((mod) => ({
@@ -598,7 +602,7 @@ export class RunManager {
       floor: this.run.floor,
       ascensionLevel: this.run.ascensionLevel,
       mode: this.run.mode,
-      armies: this.livingArmies.map((army) => {
+      armies: deployedArmies.map((army) => {
         const stats = this.armyStats(army);
         return {
           armyId: army.id,
@@ -658,8 +662,12 @@ export class RunManager {
       this.run.heroStats[army.heroId] = tracking;
     }
 
-    // Relic pre-battle buffs are consumed by the fight.
-    for (const army of this.run.armies) army.battleModifiers = [];
+    // Only deployed banners consume targeted pre-battle buffs. A wounded army
+    // held in reserve keeps its Blood Gem / Banner for the next fight it joins.
+    const deployedIds = new Set(result.armies.map((entry) => entry.armyId));
+    for (const army of this.run.armies) {
+      if (deployedIds.has(army.id)) army.battleModifiers = [];
+    }
     this.run.flags.guardianHPPenalty = 0;
     this.run.flags.battleEnergyBonus = 0;
 

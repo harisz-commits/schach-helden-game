@@ -318,4 +318,25 @@ describe('full run orchestration', () => {
     expect(profile.firstVictory).toBe(false);
     expect(outcome.newRecord).toBe(true);
   });
+
+  it('keeps reserve armies out of combat without changing their persistent HP', () => {
+    const profile = createDefaultProfile();
+    const run = RunManager.createRun(
+      { heroIds: STARTER_HERO_IDS.slice(0, 5), mode: 'NORMAL', ascensionLevel: 0, seed: 90210 },
+      profile,
+    );
+    const manager = new RunManager(run, profile, () => {});
+    const deployed = new Set(manager.armies.slice(0, 2).map((army) => army.id));
+    const reserve = manager.armies[2]!;
+    reserve.hpRatio = 0.41;
+    const encounter = Object.values(manager.run.currentMap!.map.encounters)[0]!;
+
+    const setup = manager.buildBattleSetup(encounter, deployed);
+    expect(setup.armies.map((army) => army.armyId)).toEqual(Array.from(deployed));
+
+    const result = new CombatEngine(setup).runToCompletion();
+    manager.applyBattleResult(null, encounter, result);
+    expect(reserve.hpRatio).toBe(0.41);
+    expect(reserve.alive).toBe(true);
+  });
 });

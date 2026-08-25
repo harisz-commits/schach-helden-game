@@ -1,7 +1,7 @@
 import type { EncounterData, MapData, TileData, TileType } from '../core/types';
 import { GameConfig } from '../core/GameConfig';
 import { RNG } from '../core/RNG';
-import { floorDefinition, endlessBossId } from '../data/floors';
+import { floorDefinition, endlessBossId, guaranteedNodesForFloor } from '../data/floors';
 import { ascension } from '../data/ascensions';
 import { eventPool } from '../data/events';
 import { RELICS } from '../data/relics';
@@ -188,6 +188,14 @@ function populate(result: AttemptResult, options: MapGenerationOptions, rng: RNG
     tile.type = 'ELITE';
   }
 
+  // Protect the exploration half of the loop from low-activity seeds. These
+  // are deliberately varied: a choice, a reward and a build-changing pickup.
+  for (const type of guaranteedNodesForFloor(options.floor)) {
+    const tile = take();
+    if (!tile) break;
+    tile.type = type;
+  }
+
   if (options.bonusTreasureOnFirstFloor && options.floor === 1) {
     const tile = take();
     if (tile) tile.type = 'TREASURE';
@@ -200,7 +208,7 @@ function populate(result: AttemptResult, options: MapGenerationOptions, rng: RNG
       if (weights[key]) weights[key] = Math.max(1, Math.round(weights[key]! * asc.healingNodeMultiplier));
     }
   }
-  let merchantPlaced = 0;
+  let merchantPlaced = data.tiles.some((tile) => tile.type === 'MERCHANT') ? 1 : 0;
   for (let i = cursor; i < shuffled.length; i++) {
     const tile = shuffled[i]!;
     let type = rng.weightedKey(weights);

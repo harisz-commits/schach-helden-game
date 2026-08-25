@@ -10,7 +10,7 @@ import type {
   SkillDefinition,
   TargetingRule,
 } from '../core/types';
-import { GameConfig, encounterMultiplier } from '../core/GameConfig';
+import { GameConfig, encounterMultiplier, guardianDamageMultiplier } from '../core/GameConfig';
 import { RNG } from '../core/RNG';
 import { getBlessing } from '../data/blessings';
 import { ELITE_MODIFIERS_BY_ID, getEnemy } from '../data/enemies';
@@ -226,6 +226,9 @@ export class CombatEngine implements EffectHost {
       }
       if (kind === 'GUARDIAN' || kind === 'BOSS') {
         scaled.maxHP *= GameConfig.combat.guardianHPBonus;
+        const damageBonus = guardianDamageMultiplier(floor);
+        scaled.attack *= damageBonus;
+        scaled.skillPower *= damageBonus;
       }
 
       const combatant = new Combatant({

@@ -27,26 +27,26 @@ export const GameConfig = {
   /**
    * Floor power curve: 1 + a*(f-1) + b*(f-1)^2
    *
-   * Tuned down from the original design draft (0.10 / 0.006). The player's
-   * power only grows through blessings (roughly x1.6-x2.0 over a full run),
-   * so an enemy curve reaching x5 by Floor 20 made late fights unwinnable
-   * stat checks. See BALANCE.md for the derivation.
+   * The draft's 0.10 / 0.006 curve was an unwinnable stat wall, while the
+   * previous x2.10 endpoint removed most early pressure. This middle curve is
+   * paired with larger warbands and steeper guardian pressure so route,
+   * formation, reserve and sustain decisions matter from Floor 1 onward.
    */
   scaling: {
-    linear: 0.035,
-    quadratic: 0.0012,
+    linear: 0.038,
+    quadratic: 0.0013,
     kindMultiplier: {
       ENEMY: 1.0,
-      ELITE: 1.3,
+      ELITE: 1.32,
       GUARDIAN: 1.45,
-      BOSS: 1.5,
+      BOSS: 1.55,
       SUMMON: 0.6,
       HERO: 1,
       MERCENARY: 1,
     } as Record<string, number>,
     /** Enemy HP is scaled a little harder than damage so fights stay readable. */
-    enemyHPFactor: 1.45,
-    enemyAttackFactor: 2.2,
+    enemyHPFactor: 1.4,
+    enemyAttackFactor: 2.65,
     /** Defence grows on a softer curve so late floors are not HP sponges. */
     enemyDefenseExponent: 0.55,
     /** Endless keeps growing past floor 20 with an extra per-floor multiplier. */
@@ -58,8 +58,8 @@ export const GameConfig = {
     tickRate: 30,
     maxBattleSeconds: 90,
     /** After this point every combatant gains ramping damage to break stalls. */
-    stalemateStart: 40,
-    stalemateRampPerSecond: 0.03,
+    stalemateStart: 30,
+    stalemateRampPerSecond: 0.05,
     energyMax: 100,
     /**
      * Armies enter a fight already part-charged, and each swing charges them
@@ -88,7 +88,9 @@ export const GameConfig = {
     /** 4x is unlocked after the first full clear. */
     unlockedSpeedsBeforeVictory: 2,
     /** Guardians and bosses gain this much extra HP so their fights last longer. */
-    guardianHPBonus: 1.1,
+    guardianHPBonus: 1.05,
+    /** Relative pressure fades as the normal floor curve takes over. */
+    guardianDamageBonus: { floor1: 1.38, floor20: 1.05 },
   },
 
   blessings: {
@@ -201,6 +203,13 @@ export function encounterMultiplier(floor: number, kind: string, ascensionLevel:
   const kindMult = GameConfig.scaling.kindMultiplier[kind] ?? 1;
   const asc = 1 + GameConfig.ascension.powerPerLevel * Math.max(0, ascensionLevel);
   return floorMultiplier(floor) * kindMult * asc;
+}
+
+/** Guardians teach attrition early without multiplying late-boss damage twice. */
+export function guardianDamageMultiplier(floor: number): number {
+  const range = GameConfig.combat.guardianDamageBonus;
+  const progress = Math.min(1, Math.max(0, (floor - 1) / (GameConfig.run.totalFloors - 1)));
+  return range.floor1 + (range.floor20 - range.floor1) * progress;
 }
 
 export function blessingRarityWeights(floor: number, bandBonus = 0): Record<BlessingRarity, number> {

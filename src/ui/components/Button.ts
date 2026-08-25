@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Theme, toCss } from '../theme';
+import { Theme, textResolution, toCss } from '../theme';
 
 export interface ButtonOptions {
   width: number;
@@ -39,9 +39,11 @@ export class Button extends Phaser.GameObjects.Container {
     this.labelText = scene.add
       .text(0, options.sublabel ? -options.height * 0.14 : 0, options.label, {
         fontFamily: Theme.font.display,
+        fontStyle: 'bold',
         fontSize: `${size}px`,
         color: toCss(Theme.color.text),
         align: 'center',
+        resolution: textResolution(),
         wordWrap: { width: options.width - 20 },
       })
       .setOrigin(0.5);
@@ -51,9 +53,11 @@ export class Button extends Phaser.GameObjects.Container {
       this.subText = scene.add
         .text(0, options.height * 0.2, options.sublabel, {
           fontFamily: Theme.font.body,
+          fontStyle: '500',
           fontSize: `${Math.round(size * 0.66)}px`,
           color: toCss(Theme.color.textDim),
           align: 'center',
+          resolution: textResolution(),
           wordWrap: { width: options.width - 20 },
         })
         .setOrigin(0.5);

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Theme, fontScale, toCss } from './theme';
+import { Theme, fontScale, textResolution, toCss } from './theme';
 
 export interface TextOptions {
   size?: number;
@@ -63,6 +63,7 @@ export abstract class BaseScene extends Phaser.Scene {
       fontSize: `${this.fs(options.size ?? 18)}px`,
       color: toCss(options.color ?? Theme.color.text),
       align: options.align ?? 'left',
+      resolution: textResolution(),
     };
     if (options.wrap) style.wordWrap = { width: options.wrap, useAdvancedWrap: true };
     const text = this.add.text(x, y, value, style);

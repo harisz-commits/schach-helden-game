@@ -16,8 +16,8 @@ export interface EncounterRequest {
 const SLOTS_PER_ROW = GameConfig.run.formationSlotsPerRow;
 
 function squadSize(floor: number, kind: CombatantKind, rng: RNG): number {
-  if (kind === 'GUARDIAN' || kind === 'BOSS') return rng.int(2, 3);
-  const base = floor <= 4 ? rng.int(3, 4) : floor <= 12 ? rng.int(4, 5) : rng.int(4, 6);
+  if (kind === 'GUARDIAN' || kind === 'BOSS') return rng.int(3, 4);
+  const base = floor <= 4 ? rng.int(4, 5) : floor <= 12 ? rng.int(4, 5) : rng.int(5, 6);
   return kind === 'ELITE' ? Math.min(SLOTS_PER_ROW * 2, base + 1) : base;
 }
 

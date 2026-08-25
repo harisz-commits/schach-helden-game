@@ -23,25 +23,24 @@ floorMultiplier(f) = 1 + linear * (f - 1) + quadratic * (f - 1)^2
 
 | Parameter   | Value    |
 | ----------- | -------- |
-| `linear`    | `0.035`  |
-| `quadratic` | `0.0012` |
+| `linear`    | `0.038`  |
+| `quadratic` | `0.0013` |
 
 | Floor | Multiplier |
 | ----- | ---------- |
 | 1     | 1.00       |
-| 5     | 1.16       |
-| 10    | 1.41       |
-| 15    | 1.73       |
-| 20    | 2.10       |
+| 5     | 1.17       |
+| 10    | 1.45       |
+| 15    | 1.79       |
+| 20    | 2.19       |
 
 **Why this differs from the original design draft.** The draft specified
 `0.10 / 0.006`, which reaches ×5.07 by Floor 20. In CROWNBOUND the player has no
-levels and no gear — their only power growth is blessings, worth roughly
-×1.6–×2.0 over a full run. Enemy HP *and* enemy damage both scale with this
-multiplier, so the difficulty a player feels grows with its **square**. At ×5 the
-late game became an unwinnable stat check: the simulation wiped on Floor 9–12 in
-every seed. A curve that ends near ×2.1 keeps enemy growth in step with blessing
-growth, which is what makes the last floors hard-but-fair rather than impossible.
+levels and no gear — power grows through blessings, routing and relic use. At ×5
+the late game became an unwinnable stat check. The earlier ×2.10 curve, however,
+combined with smaller warbands and low damage to make the opening feel automatic.
+The current ×2.19 endpoint keeps late scaling fair while larger early warbands
+and a higher damage factor create pressure before the first checkpoint.
 
 Endless floors past 20 keep compounding at `endlessExtraPerFloor = 0.045` per
 floor on top of the campaign curve.
@@ -51,19 +50,21 @@ floor on top of the campaign curve.
 | Kind     | Multiplier |
 | -------- | ---------- |
 | Enemy    | ×1.00      |
-| Elite    | ×1.30      |
+| Elite    | ×1.32      |
 | Guardian | ×1.45      |
-| Boss     | ×1.50      |
+| Boss     | ×1.55      |
 | Summon   | ×0.60      |
 
-Guardians and bosses additionally get `guardianHPBonus = ×1.10` so their fights
-last long enough for their phases to matter.
+Guardians and bosses additionally get `guardianHPBonus = ×1.05`. Their relative
+damage bonus eases from ×1.38 on Floor 1 to ×1.05 on Floor 20: early guardians
+teach attrition immediately, while the normal floor curve carries late bosses
+without turning every AoE into a one-shot.
 
 ### Enemy stat conversion
 
 ```
-maxHP   = base.maxHP   * multiplier * enemyHPFactor      (1.45)
-attack  = base.attack  * multiplier * enemyAttackFactor  (2.20)
+maxHP   = base.maxHP   * multiplier * enemyHPFactor      (1.40)
+attack  = base.attack  * multiplier * enemyAttackFactor  (2.65)
 defense = base.defense * multiplier ^ enemyDefenseExponent (0.55)
 ```
 
@@ -82,33 +83,28 @@ Design targets: normal fights 8–20 s, guardian and boss fights 15–35 s.
 
 | Floors | Fight    | Duration | Pool HP lost |
 | ------ | -------- | -------- | ------------ |
-| 1–4    | Normal   | 8.9 s    | 0.8 %        |
-| 1–4    | Elite    | 10.7 s   | 1.0 %        |
-| 1–4    | Guardian | 16.0 s   | ~0 %         |
-| 13–16  | Normal   | 18.1 s   | 3.0 %        |
-| 13–16  | Guardian | 23.3 s   | 1.6 %        |
-| 17–20  | Normal   | 20.3 s   | 4.0 %        |
-| 17–20  | Elite    | 20.7 s   | 6.3 %        |
-| 17–20  | Guardian | 19.0 s   | 10.1 %       |
+| 1–4    | Normal   | 10.7 s   | 1.3 %        |
+| 1–4    | Elite    | 11.8 s   | 1.8 %        |
+| 1–4    | Guardian | 16.3 s   | 0.8 %        |
+| 5–8    | Normal   | 10.8 s   | 2.1 %        |
+| 5–8    | Elite    | 12.0 s   | 2.8 %        |
+| 5–8    | Guardian | 18.7 s   | 10.7 %       |
+| 9–12   | Normal   | 23.1 s   | 2.0 %        |
+| 9–12   | Guardian | 28.6 s   | 10.5 %       |
 
 "Pool HP lost" is the share of the **whole expedition's** health spent on one
 fight. It has to be small: a full run is around 100 battles fought on a single
 health pool, so even 3 % per fight is a serious cost.
 
-The final boss is the intended wall. Measured against a representative
-mid-strength build:
+The final boss remains the intended wall: its three scripted phases, guards and
+enrage are covered by the combat suite. Arrival HP alone no longer predicts the
+result because reserves, formation, relic timing and blessing tags now materially
+change the matchup.
 
-| Arrive at | Result       |
-| --------- | ------------ |
-| 100 % HP  | Win, ~38 s   |
-| 80 % HP   | Win, ~43 s   |
-| 60 % HP   | Win, ~55 s   |
-| 40 % HP   | Loss         |
-
-Naive simulated play — fights everything, never buys, never uses a relic, picks
-blessings semi-randomly — reaches Floor 15–20 and loses. That is the intended
-shape: the first Floor 20 clear should take several attempts and require actually
-using the systems.
+Naive simulated play — six fights per floor, never buys, never uses a relic and
+only reacts to wounds when choosing blessings — reaches Floor 9–14 and loses.
+That is intentional: the first Floor 20 clear now requires scouting a route,
+resting vulnerable banners, buying healing and timing combat relics.
 
 ---
 
@@ -132,7 +128,7 @@ rather than an unreadable rounding error.
 | Darius  | Warrior   | 15 000 | 150    | 62      | 0.90      | Melee |
 
 Enemy base HP sits between 420 (Shade) and 1 520 (Royal Guard); a warband of
-4–6 of them is what a five-army expedition is sized against.
+4–6 of them (plus one for Elites) is what a five-army expedition is sized against.
 
 ---
 
@@ -147,7 +143,7 @@ final     = mitigated * (1 - damageReduction)
 - `variance` — uniform 0.95–1.05, seeded, so fights look organic but stay reproducible
 - `crit` — `critDamage` (base 1.5) when the seeded roll beats `critChance` (base 5 %)
 - `damageReduction` stacks **multiplicatively**, so three 45 % sources never reach immunity
-- `stalemate` — after 40 s every combatant gains +3 % damage per second, so no fight
+- `stalemate` — after 30 s every combatant gains +5 % damage per second, so no fight
   can stall; the 90 s hard cap is a safety net that should never be hit
 
 ---
@@ -261,6 +257,7 @@ single node, which is the intended build tension.
 | Min walkable share       | 62 %  |
 | Blocked ratio            | 14–17 % |
 | Generation retries       | 60    |
+| Guaranteed activity      | Event + Treasure + Relic per floor |
 
 "Two routes" means literally two: `countIndependentRoutes` verifies that no
 single tile can be removed without disconnecting the spawn from the guardian.

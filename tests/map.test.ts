@@ -41,4 +41,17 @@ describe('MapGenerator', () => {
     const revealed = view.passableNeighbours(view.start).filter((t) => t.state === 'REVEALED');
     expect(revealed.length).toBeGreaterThan(0);
   });
+
+  it('guarantees varied decisions and rewards on every campaign floor', () => {
+    for (let floor = 1; floor < GameConfig.run.totalFloors; floor++) {
+      for (const seed of [11, 97, 811]) {
+        const { map } = build(seed * 7919 + floor, floor);
+        const types = map.tiles.map((tile) => tile.type);
+        expect(types, `floor ${floor}, seed ${seed}`).toContain('EVENT');
+        expect(types).toContain('TREASURE');
+        expect(types).toContain('RELIC');
+        expect(types.filter((type) => type === 'MERCHANT').length).toBeLessThanOrEqual(1);
+      }
+    }
+  });
 });

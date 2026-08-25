@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Theme, toCss } from '../theme';
+import { Theme, textResolution, toCss } from '../theme';
 import { Button } from '../components/Button';
 import { drawPanel } from '../components/Panel';
 
@@ -69,9 +69,11 @@ export class Modal extends Phaser.GameObjects.Container {
     const title = scene.add
       .text(0, y, options.title, {
         fontFamily: Theme.font.display,
+        fontStyle: 'bold',
         fontSize: `${fs(24)}px`,
         color: toCss(options.accent ?? Theme.color.goldBright),
         align: 'center',
+        resolution: textResolution(),
         wordWrap: { width: panelWidth - 48 },
       })
       .setOrigin(0.5, 0);
@@ -82,9 +84,11 @@ export class Modal extends Phaser.GameObjects.Container {
       const body = scene.add
         .text(0, y, options.body, {
           fontFamily: Theme.font.body,
+          fontStyle: '500',
           fontSize: `${fs(15)}px`,
           color: toCss(Theme.color.text),
           align: 'center',
+          resolution: textResolution(),
           lineSpacing: 5,
           wordWrap: { width: panelWidth - 48 },
         })
@@ -100,6 +104,7 @@ export class Modal extends Phaser.GameObjects.Container {
           fontSize: `${fs(13)}px`,
           color: toCss(Theme.color.textDim),
           align: 'center',
+          resolution: textResolution(),
           wordWrap: { width: panelWidth - 48 },
         })
         .setOrigin(0.5, 0);

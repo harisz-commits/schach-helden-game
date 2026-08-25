@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BaseScene } from '../ui/BaseScene';
-import { Theme, toCss } from '../ui/theme';
+import { Theme, textResolution, toCss } from '../ui/theme';
 import { ensureSparkTexture, ensureUnitTexture } from '../ui/Sprites';
 import { HEROES } from '../data/heroes';
 import { ENEMIES } from '../data/enemies';
@@ -24,8 +24,10 @@ export class BootScene extends BaseScene {
     const title = this.add
       .text(this.W / 2, this.H / 2 - this.fs(20), 'CROWNBOUND', {
         fontFamily: Theme.font.display,
+        fontStyle: 'bold',
         fontSize: `${this.fs(38)}px`,
         color: toCss(Theme.color.gold),
+        resolution: textResolution(),
       })
       .setOrigin(0.5)
       .setLetterSpacing(10);
@@ -33,8 +35,10 @@ export class BootScene extends BaseScene {
     const status = this.add
       .text(this.W / 2, this.H / 2 + this.fs(30), 'PREPARING THE EXPEDITION', {
         fontFamily: Theme.font.body,
+        fontStyle: '500',
         fontSize: `${this.fs(12)}px`,
         color: toCss(Theme.color.textFaint),
+        resolution: textResolution(),
       })
       .setOrigin(0.5)
       .setLetterSpacing(4);

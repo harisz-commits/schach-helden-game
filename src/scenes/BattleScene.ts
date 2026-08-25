@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { ArmyRunState, EncounterData, Row } from '../core/types';
 import { BaseScene } from '../ui/BaseScene';
-import { Theme, hpColor, toCss } from '../ui/theme';
+import { Theme, hpColor, textResolution, toCss } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { drawPanel } from '../ui/components/Panel';
 import { closeTopModal, showModal } from '../ui/overlays/Modal';
@@ -13,7 +13,7 @@ import { getHero } from '../data/heroes';
 import { ENEMIES_BY_ID } from '../data/enemies';
 import { BOSSES } from '../data/bosses';
 import { GameConfig } from '../core/GameConfig';
-import { SLOTS_PER_ROW } from '../combat/Formation';
+import { ALL_SLOTS, SLOTS_PER_ROW } from '../combat/Formation';
 import { CombatEngine, type BattleResult, type CombatLogEntry } from '../combat/CombatEngine';
 import type { Combatant } from '../combat/Combatant';
 import type { RunManager } from '../run/RunManager';
@@ -60,6 +60,8 @@ export class BattleScene extends BaseScene {
   private views = new Map<string, UnitView>();
   private selectedArmyId: string | null = null;
   private formation = new Map<string, { row: Row; slot: number }>();
+  /** Living armies deliberately sent into this fight. Others remain in reserve. */
+  private participants = new Set<string>();
   private result: BattleResult | null = null;
   private speedButton?: Button;
   private timerLabel?: Phaser.GameObjects.Text;
@@ -78,6 +80,7 @@ export class BattleScene extends BaseScene {
     this.views.clear();
     this.selectedArmyId = null;
     this.formation.clear();
+    this.participants.clear();
 
     const manager = session.runManager;
     if (!manager) return;
@@ -86,6 +89,7 @@ export class BattleScene extends BaseScene {
     if (encounter) this.encounter = encounter;
     for (const army of manager.livingArmies) {
       this.formation.set(army.id, { row: army.row, slot: army.slot });
+      this.participants.add(army.id);
     }
   }
 
@@ -133,9 +137,9 @@ export class BattleScene extends BaseScene {
   }
 
   protected override layout(): void {
-    // Never restart mid-fight: rebuild only the static furniture.
-    if (this.phase === 'FIGHT') return;
-    this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+    // A restart used to wipe the selected army on every tap, making formation
+    // editing appear interactive while never actually moving anything.
+    if (this.phase === 'PREP') this.rebuildPrep();
   }
 
   /* ---------------------------------------------------------------- */
@@ -165,7 +169,10 @@ export class BattleScene extends BaseScene {
     // action buttons, so tall screens do not leave a hole in the middle.
     const enemyRows = Math.ceil(Math.min(this.encounter.units.length, 8) / Math.min(this.encounter.units.length, 6));
     const previewHeight = this.fs(48) + enemyRows * this.fs(40);
-    const formationHeight = this.fs(64) + 2 * Math.min(this.fs(72), (Math.min(this.W - this.fs(24), this.fs(440)) / SLOTS_PER_ROW) * 1.15) + this.fs(26);
+    const formationHeight =
+      this.fs(100) +
+      2 * Math.min(this.fs(72), (Math.min(this.W - this.fs(24), this.fs(440)) / SLOTS_PER_ROW) * 1.15) +
+      this.fs(26);
     const areaTop = this.fs(66);
     const areaBottom = this.H - this.fs(120);
     const blockTop = Math.max(areaTop, areaTop + (areaBottom - areaTop - previewHeight - formationHeight) / 2);
@@ -180,25 +187,37 @@ export class BattleScene extends BaseScene {
       width,
       height: Math.max(Theme.touch + 4, this.fs(54)),
       label: 'START BATTLE',
+      sublabel: `${this.participants.size} of ${this.manager.livingArmies.length} armies deployed`,
       variant: 'primary',
+      enabled: this.participants.size > 0,
       onClick: () => this.startBattle(),
     });
 
-    const smallWidth = Math.min(this.fs(150), (this.W - this.fs(36)) / 2);
-    new Button(this, cx - smallWidth / 2 - this.fs(6), bottom - this.fs(58), {
+    const utilityGap = this.fs(6);
+    const smallWidth = Math.min(this.fs(126), (this.W - this.fs(40) - utilityGap * 2) / 3);
+    const utilityY = bottom - this.fs(58);
+    new Button(this, cx - smallWidth - utilityGap, utilityY, {
       width: smallWidth,
       height: this.fs(40),
       label: 'AUTO FORMATION',
       variant: 'ghost',
-      fontSize: this.fs(12),
+      fontSize: this.fs(10),
       onClick: () => this.autoFormation(),
     });
-    new Button(this, cx + smallWidth / 2 + this.fs(6), bottom - this.fs(58), {
+    new Button(this, cx, utilityY, {
+      width: smallWidth,
+      height: this.fs(40),
+      label: 'ENEMY INTEL',
+      variant: 'ghost',
+      fontSize: this.fs(10),
+      onClick: () => this.openEnemyIntel(),
+    });
+    new Button(this, cx + smallWidth + utilityGap, utilityY, {
       width: smallWidth,
       height: this.fs(40),
       label: 'USE RELIC',
       variant: 'ghost',
-      fontSize: this.fs(12),
+      fontSize: this.fs(10),
       onClick: () => this.openPreBattleRelics(),
     });
 
@@ -257,7 +276,8 @@ export class BattleScene extends BaseScene {
   }
 
   private buildFormationEditor(top: number): void {
-    const armies = this.manager.livingArmies;
+    const armies = this.manager.livingArmies.filter((army) => this.participants.has(army.id));
+    const reserves = this.manager.livingArmies.filter((army) => !this.participants.has(army.id));
     const gridWidth = Math.min(this.W - this.fs(24), this.fs(440));
     const cellW = gridWidth / SLOTS_PER_ROW;
     const cellH = Math.min(this.fs(72), cellW * 1.15);
@@ -271,9 +291,15 @@ export class BattleScene extends BaseScene {
       letterSpacing: 3,
       align: 'center',
     });
-    this.label(this.W / 2, top + this.fs(12), 'Tap an army, then tap a slot', {
+    const selected = this.manager.livingArmies.find((army) => army.id === this.selectedArmyId);
+    const instruction = selected
+      ? this.participants.has(selected.id)
+        ? `Move ${getHero(selected.heroId).name} to a slot · tap again to rest`
+        : `Tap an empty slot to deploy ${getHero(selected.heroId).name}`
+      : 'Tap an army, then a slot · wounded armies may rest';
+    this.label(this.W / 2, top + this.fs(12), instruction, {
       size: 11,
-      color: Theme.color.textDim,
+      color: selected ? Theme.color.goldBright : Theme.color.textDim,
       font: 'body',
       origin: [0.5, 0.5],
       align: 'center',
@@ -297,6 +323,42 @@ export class BattleScene extends BaseScene {
         });
         this.buildFormationCell(x, y, cellW - this.fs(6), cellH, row, slot, army);
       }
+    });
+
+    const reserveY = top + this.fs(34) + 2 * (cellH + this.fs(26)) + this.fs(5);
+    this.label(this.W / 2 - gridWidth / 2 + this.fs(2), reserveY, 'RESERVES', {
+      size: 9,
+      color: Theme.color.textFaint,
+      font: 'body',
+      origin: [0, 0.5],
+      letterSpacing: 2,
+    });
+    if (reserves.length === 0) {
+      this.label(this.W / 2 - gridWidth / 2 + this.fs(68), reserveY, 'None · all living armies will fight', {
+        size: 10,
+        color: Theme.color.textFaint,
+        font: 'body',
+        origin: [0, 0.5],
+      });
+      return;
+    }
+
+    const chipGap = this.fs(6);
+    const chipWidth = Math.min(this.fs(112), (gridWidth - chipGap * (reserves.length - 1)) / reserves.length);
+    const reserveStartX = this.W / 2 - ((reserves.length - 1) * (chipWidth + chipGap)) / 2;
+    reserves.forEach((army, index) => {
+      new Button(this, reserveStartX + index * (chipWidth + chipGap), reserveY + this.fs(24), {
+        width: chipWidth,
+        height: Math.max(Theme.touch, this.fs(32)),
+        label: getHero(army.heroId).name.toUpperCase(),
+        sublabel: `${Math.round(army.hpRatio * 100)}% HP`,
+        variant: this.selectedArmyId === army.id ? 'primary' : 'ghost',
+        fontSize: Math.max(10, this.fs(10)),
+        onClick: () => {
+          this.selectedArmyId = army.id;
+          this.rebuildPrep();
+        },
+      });
     });
   }
 
@@ -364,28 +426,62 @@ export class BattleScene extends BaseScene {
     if (this.selectedArmyId) {
       const moving = this.selectedArmyId;
       const occupant = army;
-      const from = this.formation.get(moving)!;
-      if (occupant && occupant.id !== moving) {
+      const from = this.formation.get(moving);
+
+      // Tapping a selected deployed army again puts it in reserve. This makes
+      // persistent HP a tactical resource: a wounded banner can sit out one
+      // fight instead of being forced to die in it.
+      if (occupant?.id === moving && this.participants.has(moving)) {
+        if (this.participants.size <= 1) {
+          this.toast('At least one army must take the field.', 'bad');
+          return;
+        }
+        this.participants.delete(moving);
+        this.formation.delete(moving);
+        this.selectedArmyId = null;
+        this.applyFormation();
+        this.rebuildPrep();
+        return;
+      }
+
+      if (!from && occupant) {
+        this.toast('Choose an empty slot for a reserve army.', 'bad');
+        return;
+      }
+      if (occupant && occupant.id !== moving && from) {
         this.formation.set(occupant.id, { row: from.row, slot: from.slot });
       }
       this.formation.set(moving, { row, slot });
+      this.participants.add(moving);
       this.selectedArmyId = null;
       this.applyFormation();
-      this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+      this.rebuildPrep();
       return;
     }
     if (army) {
       this.selectedArmyId = army.id;
-      this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+      this.rebuildPrep();
     }
   }
 
   private applyFormation(): void {
+    const occupied = new Set<string>();
     for (const army of this.manager.armies) {
       const place = this.formation.get(army.id);
       if (!place) continue;
       army.row = place.row;
       army.slot = place.slot;
+      occupied.add(`${place.row}:${place.slot}`);
+    }
+    // Reserve armies still need a unique stored slot so the next battle does
+    // not reopen with two banners stacked on top of each other.
+    for (const army of this.manager.livingArmies) {
+      if (this.formation.has(army.id)) continue;
+      const free = ALL_SLOTS.find((candidate) => !occupied.has(`${candidate.row}:${candidate.slot}`));
+      if (!free) continue;
+      army.row = free.row;
+      army.slot = free.slot;
+      occupied.add(`${free.row}:${free.slot}`);
     }
     saveManager.requestSave();
   }
@@ -400,8 +496,67 @@ export class BattleScene extends BaseScene {
       this.formation.set(army.id, { row, slot: used[row] });
       used[row] += 1;
     }
+    this.participants = new Set(armies.map((army) => army.id));
+    this.selectedArmyId = null;
     this.applyFormation();
-    this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+    this.rebuildPrep();
+  }
+
+  private rebuildPrep(): void {
+    if (this.phase !== 'PREP') return;
+    this.children.removeAll(true);
+    this.views.clear();
+    this.paintBackground(Theme.color.bgAlt, Theme.color.enemy);
+    this.fieldLayer = this.add.container(0, 0);
+    this.buildPrep();
+  }
+
+  private openEnemyIntel(): void {
+    const groups = new Map<string, { count: number; modifiers: Set<string> }>();
+    for (const unit of this.encounter.units) {
+      const current = groups.get(unit.defId) ?? { count: 0, modifiers: new Set<string>() };
+      current.count += 1;
+      for (const modifier of unit.eliteModifiers ?? []) current.modifiers.add(modifier);
+      groups.set(unit.defId, current);
+    }
+    const targeting: Record<string, string> = {
+      NEAREST: 'hits the nearest line',
+      LOWEST_HP_PERCENT: 'hunts the most wounded',
+      LOWEST_HP_ABSOLUTE: 'hunts the weakest army',
+      HIGHEST_ATTACK: 'targets your strongest attacker',
+      BACKLINE_FIRST: 'dives your back row',
+      FRONTLINE_FIRST: 'presses the front row',
+      RANDOM: 'changes targets unpredictably',
+    };
+    const threat =
+      this.encounter.kind === 'BOSS'
+        ? 'LETHAL BOSS'
+        : this.encounter.kind === 'GUARDIAN'
+          ? 'DEADLY'
+          : this.encounter.kind === 'ELITE'
+            ? 'HIGH'
+            : 'STANDARD';
+    const notes = Array.from(groups.entries()).map(([defId, group]) => {
+      const def = ENEMIES_BY_ID[defId] ?? BOSSES.find((boss) => boss.enemy.id === defId)?.enemy;
+      if (!def) return `${group.count}× Unknown enemy`;
+      const details = [
+        `${group.count}× ${def.name}`,
+        def.role.replace(/_/g, ' '),
+        targeting[def.targeting] ?? def.targeting,
+        def.activeSkill ? `Skill: ${def.activeSkill.name}` : '',
+        group.modifiers.size > 0 ? `Modifiers: ${Array.from(group.modifiers).join(', ')}` : '',
+      ].filter(Boolean);
+      return details.join(' · ');
+    });
+    showModal(this, {
+      title: 'Enemy Intel',
+      body: `${threat} THREAT · ${this.encounter.units.length} enemies · Floor ${this.manager.floor}`,
+      notes,
+      accent: this.encounter.kind === 'ENEMY' ? Theme.color.warn : Theme.color.bad,
+      dismissible: true,
+      maxWidth: 680,
+      actions: [{ label: 'BACK TO FORMATION', variant: 'primary', onClick: () => closeTopModal(this) }],
+    });
   }
 
   private openPreBattleRelics(): void {
@@ -452,7 +607,6 @@ export class BattleScene extends BaseScene {
 
   private applyRelic(uid: string, relicId: string, armyId?: string): void {
     const result = this.manager.useRelic(uid, armyId);
-    for (const message of result.messages) this.toast(message, 'good');
     // A Smoke Bomb skips the fight entirely rather than starting it.
     if (relicId === 'smoke_bomb' && this.encounter.kind === 'ENEMY') {
       const tile = this.manager.view.get(this.tileId);
@@ -460,7 +614,8 @@ export class BattleScene extends BaseScene {
       this.goto('Map', { messages: ['You slip past the warband unseen.'] });
       return;
     }
-    this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+    this.rebuildPrep();
+    for (const message of result.messages) this.toast(message, 'good');
   }
 
   /* ---------------------------------------------------------------- */
@@ -468,8 +623,12 @@ export class BattleScene extends BaseScene {
   /* ---------------------------------------------------------------- */
 
   private startBattle(): void {
+    if (this.participants.size === 0) {
+      this.toast('Choose at least one army.', 'bad');
+      return;
+    }
     this.applyFormation();
-    this.engine = new CombatEngine(this.manager.buildBattleSetup(this.encounter));
+    this.engine = new CombatEngine(this.manager.buildBattleSetup(this.encounter, this.participants));
     this.phase = 'FIGHT';
     this.children.removeAll(true);
     this.views.clear();
@@ -745,6 +904,7 @@ export class BattleScene extends BaseScene {
         color: toCss(color),
         stroke: '#000000',
         strokeThickness: 3,
+        resolution: textResolution(),
       })
       .setOrigin(0.5)
       .setDepth(900);

@@ -58,7 +58,7 @@ export function biomeForFloor(floor: number): BiomeDefinition {
 type NodeWeights = Partial<Record<TileType, number>>;
 
 const EARLY_NODES: NodeWeights = {
-  EMPTY: 130,
+  EMPTY: 90,
   TREASURE: 34,
   GOLD: 40,
   HEALING_FOUNTAIN: 26,
@@ -72,7 +72,7 @@ const EARLY_NODES: NodeWeights = {
 };
 
 const MID_NODES: NodeWeights = {
-  EMPTY: 110,
+  EMPTY: 78,
   TREASURE: 34,
   GOLD: 36,
   HEALING_FOUNTAIN: 24,
@@ -91,7 +91,7 @@ const MID_NODES: NodeWeights = {
 };
 
 const LATE_NODES: NodeWeights = {
-  EMPTY: 96,
+  EMPTY: 68,
   TREASURE: 32,
   GOLD: 32,
   HEALING_FOUNTAIN: 22,
@@ -193,6 +193,19 @@ export function floorDefinition(floor: number): FloorDefinition {
 }
 
 export const CHECKPOINT_FLOORS = [4, 8, 12, 16];
+
+/**
+ * Every generated floor carries a small guaranteed activity spine. Random
+ * weights still shape the rest, but an unlucky seed can no longer produce a
+ * stretch that feels like empty tapping between compulsory fights.
+ */
+export function guaranteedNodesForFloor(floor: number): TileType[] {
+  if (floor === 20) return [];
+  const nodes: TileType[] = ['EVENT', 'TREASURE', 'RELIC'];
+  nodes.push(floor <= 4 ? 'WAR_CAMP' : floor % 2 === 0 ? 'ALTAR' : 'ORACLE_TOWER');
+  if (floor % 2 === 0) nodes.push('MERCHANT');
+  return nodes;
+}
 
 /** Endless bosses reuse the campaign bosses on a rotation. */
 export function endlessBossId(floor: number): string | undefined {

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { ArmyRunState, TileData } from '../core/types';
 import { BaseScene } from '../ui/BaseScene';
-import { Theme, hpColor, toCss } from '../ui/theme';
+import { Theme, hpColor } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { drawPanel } from '../ui/components/Panel';
 import { closeTopModal, showModal } from '../ui/overlays/Modal';
@@ -274,7 +274,7 @@ export class MapScene extends BaseScene {
   /* ---------------------------------------------------------------- */
 
   private get bottomBarHeight(): number {
-    return this.fs(60);
+    return Math.max(this.fs(82), 72);
   }
 
   private drawGrid(): void {
@@ -308,31 +308,6 @@ export class MapScene extends BaseScene {
       if (cell) this.gridLayer.add(cell);
     }
 
-    this.drawObjective(this.gridOrigin.y + gridHeight - this.tileSize / 2 + this.fs(22));
-  }
-
-  /**
-   * A one-line objective under the grid. Tall phones leave room below a square
-   * grid, and "what do I do next" is the question that room should answer.
-   */
-  private drawObjective(y: number): void {
-    if (y > this.H - this.bottomBarHeight - this.fs(20)) return;
-    const remaining = this.manager.view.tiles.filter(
-      (tile) => tile.state !== 'CLEARED' && tile.type !== 'BLOCKED' && tile.type !== 'EXIT',
-    ).length;
-    const text = this.manager.guardianDefeated
-      ? `The way out is open · ${remaining} tiles left to explore`
-      : 'Find and defeat the Guardian to open the way out';
-    this.gridLayer.add(
-      this.label(this.W / 2, y, text, {
-        size: 12,
-        color: this.manager.guardianDefeated ? Theme.color.good : Theme.color.textDim,
-        font: 'body',
-        origin: [0.5, 0.5],
-        align: 'center',
-        wrap: this.W - this.fs(30),
-      }),
-    );
   }
 
   private tilePosition(tile: TileData, gap: number): { x: number; y: number } {
@@ -661,11 +636,36 @@ export class MapScene extends BaseScene {
 
     const run = this.manager.run;
     const buttonWidth = Math.min(this.fs(120), (this.W - this.fs(24)) / 3);
-    const centerY = y + height / 2;
+    const centerY = y + height - Math.max(Theme.touch / 2 + 4, this.fs(23));
+
+    // This prompt never disappears behind the grid. The old objective was
+    // only visible on unusually tall screens, leaving most players staring at
+    // symbols with no explanation of what was actionable.
+    const frontier = this.manager.fog.frontier();
+    const routeNames = Array.from(new Set(frontier.map((tile) => TILE_LABEL[tile.type])));
+    const remaining = this.manager.view.tiles.filter(
+      (tile) => tile.state !== 'CLEARED' && tile.type !== 'BLOCKED' && tile.type !== 'EXIT',
+    ).length;
+    const extra = Math.max(0, routeNames.length - 3);
+    const routeSummary = routeNames.slice(0, 3).join('  ·  ');
+    const objective = this.manager.guardianDefeated
+      ? `EXIT OPEN  ·  ${remaining} sites remain`
+      : routeSummary
+        ? `CHOOSE A GLOWING TILE  ·  ${routeSummary}${extra > 0 ? `  +${extra}` : ''}`
+        : 'FIND AND DEFEAT THE GUARDIAN';
+    this.label(this.W / 2, y + this.fs(13), objective, {
+      size: 10,
+      color: this.manager.guardianDefeated ? Theme.color.good : Theme.color.textDim,
+      font: 'body',
+      origin: [0.5, 0.5],
+      align: 'center',
+      wrap: this.W - this.fs(24),
+      letterSpacing: 1,
+    }).setDepth(402);
 
     new Button(this, this.fs(12) + buttonWidth / 2, centerY, {
       width: buttonWidth,
-      height: this.fs(40),
+      height: Math.max(Theme.touch, this.fs(40)),
       label: `RELICS ${run.relics.length}/${GameConfig.run.relicInventorySize}`,
       variant: 'secondary',
       fontSize: this.fs(13),
@@ -674,7 +674,7 @@ export class MapScene extends BaseScene {
 
     new Button(this, this.W / 2, centerY, {
       width: buttonWidth,
-      height: this.fs(40),
+      height: Math.max(Theme.touch, this.fs(40)),
       label: `BLESSINGS ${run.blessings.reduce((s, b) => s + b.stacks, 0)}`,
       variant: 'secondary',
       fontSize: this.fs(13),
@@ -683,16 +683,15 @@ export class MapScene extends BaseScene {
 
     const goldX = this.W - this.fs(12) - buttonWidth / 2;
     const goldPanel = this.add.graphics().setDepth(401);
-    drawPanel(goldPanel, { width: buttonWidth, height: this.fs(40), fill: Theme.color.panel, border: Theme.color.goldDim });
+    const buttonHeight = Math.max(Theme.touch, this.fs(40));
+    drawPanel(goldPanel, { width: buttonWidth, height: buttonHeight, fill: Theme.color.panel, border: Theme.color.goldDim });
     goldPanel.setPosition(goldX, centerY);
-    this.add
-      .text(goldX, centerY, `${run.gold} GOLD`, {
-        fontFamily: Theme.font.display,
-        fontSize: `${this.fs(14)}px`,
-        color: toCss(Theme.color.goldBright),
-      })
-      .setOrigin(0.5)
-      .setDepth(402);
+    this.label(goldX, centerY, `${run.gold} GOLD`, {
+      size: 14,
+      color: Theme.color.goldBright,
+      origin: [0.5, 0.5],
+      align: 'center',
+    }).setDepth(402);
   }
 
   private openRelics(): void {

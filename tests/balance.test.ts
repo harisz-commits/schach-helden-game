@@ -17,13 +17,18 @@ const BOSS_BY_FLOOR: Record<number, string> = {
   20: 'the_crownless_king',
 };
 
-/** A player who leans offensive but takes what the run offers. */
-function rollBlessing(floor: number, rng: RNG, owned: OwnedBlessing[]): void {
-  const rarity = rng.weightedKey(blessingRarityWeights(floor));
-  const offers = Array.from({ length: 3 }, () => rng.pick(blessingsByRarity(rarity)));
-  const pick =
-    offers.find((b) => b.tags.includes('OFFENSE') && !owned.some((o) => o.id === b.id && o.stacks >= b.maxStacks)) ??
-    offers[0]!;
+/** A player who changes priorities when the expedition is becoming wounded. */
+function rollBlessing(floor: number, rng: RNG, owned: OwnedBlessing[], healthPool: number): void {
+  // Match RunManager: each of the three cards rolls its own rarity.
+  const offers = Array.from({ length: 3 }, () => {
+    const rarity = rng.weightedKey(blessingRarityWeights(floor));
+    return rng.pick(blessingsByRarity(rarity));
+  });
+  const available = offers.filter((b) => !owned.some((o) => o.id === b.id && o.stacks >= b.maxStacks));
+  const priorities = healthPool < 0.78 ? ['SUSTAIN', 'DEFENSE', 'OFFENSE'] : ['OFFENSE', 'SUSTAIN', 'DEFENSE'];
+  const pick = priorities
+    .map((tag) => available.find((blessing) => blessing.tags.includes(tag as 'SUSTAIN' | 'DEFENSE' | 'OFFENSE')))
+    .find(Boolean) ?? available[0] ?? offers[0]!;
   const existing = owned.find((b) => b.id === pick.id);
   if (existing && existing.stacks < pick.maxStacks) existing.stacks += 1;
   else if (!existing) owned.push({ id: pick.id, stacks: 1 });
@@ -94,7 +99,7 @@ function simulateRun(seed: number): { samples: FightSample[]; reachedFloor: numb
 
     // Floor rewards: one blessing plus the healing a floor typically offers
     // (one fountain on the wounded army, a sacred spring, a checkpoint chest).
-    rollBlessing(floor, rng, blessings);
+    rollBlessing(floor, rng, blessings, poolOf(armies));
     const wounded = armies.filter((a) => a.alive).sort((a, b) => a.hpRatio - b.hpRatio)[0];
     if (wounded) wounded.hpRatio = Math.min(1, wounded.hpRatio + 0.35);
     for (const army of armies) if (army.alive) army.hpRatio = Math.min(1, army.hpRatio + 0.12);
@@ -155,13 +160,15 @@ describe('balance', () => {
     expect(guardian.duration).toBeLessThan(40);
     expect(guardian.poolLost).toBeGreaterThan(normal.poolLost);
 
-    // A reasonable run should reach the late game but not trivially clear it.
-    // Naive play (no relics, no routing, fights everything) should get deep
-    // into the campaign without clearing it - skilled play is what wins.
+    // A system-agnostic run should reach the midgame but not trivially clear it.
+    // Naive play (no relics, no merchant and six fights per floor) should
+    // reach the midgame, but no longer wander to Floor 20 by itself. Routing,
+    // reserves, relic timing and a coherent build are what carry late runs.
     const deepest = Math.max(...runs.map((r) => r.reachedFloor));
     const median = runs.map((r) => r.reachedFloor).sort((a, b) => a - b)[Math.floor(runs.length / 2)]!;
-    expect(deepest).toBeGreaterThanOrEqual(16);
+    expect(deepest).toBeGreaterThanOrEqual(13);
     expect(median).toBeGreaterThanOrEqual(10);
+    expect(runs.filter((run) => run.won)).toHaveLength(0);
   });
 
   it('is deterministic: identical seed and formation produce an identical battle', () => {
