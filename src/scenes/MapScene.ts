@@ -67,7 +67,7 @@ export class MapScene extends BaseScene {
     this.fadeIn();
 
     attachDebugPanel(this, () => this.refresh());
-    registerDevBridge({
+    registerDevBridge(this, {
       scene: 'Map',
       floor: () => this.manager.floor,
       gold: () => this.manager.gold,
@@ -300,6 +300,32 @@ export class MapScene extends BaseScene {
       const cell = this.buildTile(tile, gap);
       if (cell) this.gridLayer.add(cell);
     }
+
+    this.drawObjective(this.gridOrigin.y + gridHeight - this.tileSize / 2 + this.fs(22));
+  }
+
+  /**
+   * A one-line objective under the grid. Tall phones leave room below a square
+   * grid, and "what do I do next" is the question that room should answer.
+   */
+  private drawObjective(y: number): void {
+    if (y > this.H - this.bottomBarHeight - this.fs(20)) return;
+    const remaining = this.manager.view.tiles.filter(
+      (tile) => tile.state !== 'CLEARED' && tile.type !== 'BLOCKED' && tile.type !== 'EXIT',
+    ).length;
+    const text = this.manager.guardianDefeated
+      ? `The way out is open · ${remaining} tiles left to explore`
+      : 'Find and defeat the Guardian to open the way out';
+    this.gridLayer.add(
+      this.label(this.W / 2, y, text, {
+        size: 12,
+        color: this.manager.guardianDefeated ? Theme.color.good : Theme.color.textDim,
+        font: 'body',
+        origin: [0.5, 0.5],
+        align: 'center',
+        wrap: this.W - this.fs(30),
+      }),
+    );
   }
 
   private tilePosition(tile: TileData, gap: number): { x: number; y: number } {

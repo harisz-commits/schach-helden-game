@@ -1,4 +1,5 @@
 import { BaseScene } from '../ui/BaseScene';
+import { registerDevBridge } from '../debug/DevBridge';
 import { Theme } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { ScrollView } from '../ui/components/ScrollView';
@@ -44,16 +45,22 @@ export class RunEndScene extends BaseScene {
     this.buildFooter();
     this.enableResponsiveLayout();
     this.fadeIn();
+    registerDevBridge(this, { scene: 'RunEnd' });
   }
 
   override update(): void {
     this.scroller?.tick();
   }
 
+  /** True only for the run that beat Floor 20 for the very first time. */
+  private get isFirstVictory(): boolean {
+    return this.won && session.profile.totalStats.runsWon === 1;
+  }
+
   private buildHeader(): void {
     const cx = this.W / 2;
     const run = session.runManager?.run;
-    const firstVictory = this.won && session.lastOutcome && session.profile.totalStats.runsWon === 1;
+    const firstVictory = this.isFirstVictory;
 
     this.label(cx, this.fs(34), this.won ? 'THE CROWN IS TAKEN' : 'THE EXPEDITION HAS FALLEN', {
       size: 24,
@@ -95,6 +102,18 @@ export class RunEndScene extends BaseScene {
     const scroller = new ScrollView(this, this.W / 2 - width / 2, top, width, bottom - top);
     this.scroller = scroller;
     let y = 0;
+
+    // The first clear is the moment the game opens up - lead with that.
+    if (this.isFirstVictory) {
+      y = this.buildSection(scroller, width, y, 'THE KINGDOM OPENS', [
+        ['Ascension I–X', 'UNLOCKED'],
+        ['Lieutenant system', 'UNLOCKED'],
+        ['Seraph, the Last Bastion', 'UNLOCKED'],
+        ['New blessings', 'UNLOCKED'],
+        ['New events', 'UNLOCKED'],
+        ['Daily Kingdom', 'UNLOCKED'],
+      ]);
+    }
 
     const stats: [string, string][] = [
       ['Floor reached', `${run.floor}${run.mode === 'ENDLESS' ? '' : ` / ${GameConfig.run.totalFloors}`}`],
@@ -187,7 +206,7 @@ export class RunEndScene extends BaseScene {
       scroller.content.add(
         this.label(width - this.fs(14), rowY, value, {
           size: 13,
-          color: Theme.color.text,
+          color: value === 'UNLOCKED' ? Theme.color.goldBright : Theme.color.text,
           origin: [1, 0],
         }),
       );

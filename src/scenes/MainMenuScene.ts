@@ -1,5 +1,6 @@
 import type { GameMode } from '../core/types';
 import { BaseScene } from '../ui/BaseScene';
+import { registerDevBridge } from '../debug/DevBridge';
 import { Theme } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { ScrollView } from '../ui/components/ScrollView';
@@ -26,6 +27,7 @@ export class MainMenuScene extends BaseScene {
     this.buildFooter();
     this.enableResponsiveLayout();
     this.fadeIn();
+    registerDevBridge(this, { scene: 'MainMenu' });
   }
 
   override update(): void {

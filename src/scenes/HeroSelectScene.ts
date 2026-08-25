@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { GameMode, HeroDefinition } from '../core/types';
 import { BaseScene } from '../ui/BaseScene';
+import { registerDevBridge } from '../debug/DevBridge';
 import { Theme } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { ScrollView } from '../ui/components/ScrollView';
@@ -55,6 +56,7 @@ export class HeroSelectScene extends BaseScene {
     this.buildFooter();
     this.enableResponsiveLayout();
     this.fadeIn();
+    registerDevBridge(this, { scene: 'HeroSelect' });
   }
 
   override update(): void {

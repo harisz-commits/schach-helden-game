@@ -101,7 +101,7 @@ export class BattleScene extends BaseScene {
     this.enableResponsiveLayout();
     this.fadeIn();
 
-    registerDevBridge({
+    registerDevBridge(this, {
       scene: 'Battle',
       phase: () => this.phase,
       start: () => {
@@ -161,9 +161,17 @@ export class BattleScene extends BaseScene {
       align: 'center',
     });
 
-    this.buildEnemyPreview(this.fs(74));
-    const formationTop = this.fs(74) + this.fs(96);
-    this.buildFormationEditor(formationTop);
+    // Centre the enemy preview + formation block between the header and the
+    // action buttons, so tall screens do not leave a hole in the middle.
+    const enemyRows = Math.ceil(Math.min(this.encounter.units.length, 8) / Math.min(this.encounter.units.length, 6));
+    const previewHeight = this.fs(48) + enemyRows * this.fs(40);
+    const formationHeight = this.fs(64) + 2 * Math.min(this.fs(72), (Math.min(this.W - this.fs(24), this.fs(440)) / SLOTS_PER_ROW) * 1.15) + this.fs(26);
+    const areaTop = this.fs(66);
+    const areaBottom = this.H - this.fs(120);
+    const blockTop = Math.max(areaTop, areaTop + (areaBottom - areaTop - previewHeight - formationHeight) / 2);
+
+    this.buildEnemyPreview(blockTop + this.fs(8));
+    this.buildFormationEditor(blockTop + previewHeight + this.fs(18));
 
     const bottom = this.H - this.fs(30);
     const width = Math.min(this.fs(320), this.W - 40);
@@ -317,7 +325,7 @@ export class BattleScene extends BaseScene {
     if (army) {
       const hero = getHero(army.heroId);
       const key = ensureUnitTexture(this, hero.art.shape, hero.art.color, hero.art.accent);
-      container.add(this.add.image(0, -height * 0.12, key).setDisplaySize(width * 0.5, width * 0.64));
+      container.add(this.add.image(0, -height * 0.2, key).setDisplaySize(width * 0.44, width * 0.56));
       container.add(
         this.label(0, height / 2 - this.fs(16), hero.name.toUpperCase(), {
           size: 9,

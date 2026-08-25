@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { HeroDefinition } from '../core/types';
 import { BaseScene } from '../ui/BaseScene';
+import { registerDevBridge } from '../debug/DevBridge';
 import { Theme } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { ScrollView } from '../ui/components/ScrollView';
@@ -28,6 +29,7 @@ export class CollectionScene extends BaseScene {
     this.buildList();
     this.enableResponsiveLayout();
     this.fadeIn();
+    registerDevBridge(this, { scene: 'Collection' });
   }
 
   override update(): void {

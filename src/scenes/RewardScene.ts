@@ -64,7 +64,7 @@ export class RewardScene extends BaseScene {
     this.enableResponsiveLayout();
     this.fadeIn();
     audio.play('reward');
-    registerDevBridge({
+    registerDevBridge(this, {
       scene: 'Reward',
       offers: () => this.offer.blessingIds,
       pick: (index: number) => {
@@ -123,7 +123,7 @@ export class RewardScene extends BaseScene {
 
     const cardWidth = Math.min(this.W - this.fs(32), this.fs(420));
     const gap = this.fs(10);
-    const cardHeight = Math.min(this.fs(132), (available - gap * (defs.length - 1)) / defs.length);
+    const cardHeight = Math.min(this.fs(176), (available - gap * (defs.length - 1)) / defs.length);
     let y = top + (available - (cardHeight * defs.length + gap * (defs.length - 1))) / 2 + cardHeight / 2;
     for (const def of defs) {
       this.buildCard(def, this.W / 2, y, cardWidth, cardHeight);

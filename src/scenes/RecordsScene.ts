@@ -1,4 +1,5 @@
 import { BaseScene } from '../ui/BaseScene';
+import { registerDevBridge } from '../debug/DevBridge';
 import { Theme } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { ScrollView } from '../ui/components/ScrollView';
@@ -28,6 +29,7 @@ export class RecordsScene extends BaseScene {
     this.buildBody();
     this.enableResponsiveLayout();
     this.fadeIn();
+    registerDevBridge(this, { scene: 'Records' });
   }
 
   override update(): void {
