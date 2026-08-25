@@ -1,6 +1,7 @@
 import type {
   ArmyRunState,
   BlessingRarity,
+  EffectDefinition,
   EncounterData,
   EventChoice,
   EventDefinition,
@@ -458,11 +459,36 @@ export class RunManager {
   }
 
   /** Applies an army-targeted node once the player has picked a target. */
+  /**
+   * Resolves an army-targeted node.
+   *
+   * For RECRUITMENT_CAMP the third argument is a *hero* id (who to hire), not
+   * an army id - it is handled before the army lookup, which would otherwise
+   * fail and leave the tile stuck unresolved forever.
+   */
   resolveArmyChoice(tileId: string, purpose: ArmyChoicePurpose, armyId: string): string[] {
     const tile = this.view.get(tileId);
-    const army = this.run.armies.find((a) => a.id === armyId);
     const messages: string[] = [];
-    if (!army) return ['No such army.'];
+
+    if (purpose === 'RECRUITMENT_CAMP') {
+      const mercenary = this.recruitMercenary(armyId);
+      messages.push(
+        mercenary
+          ? `${getHero(mercenary.heroId).name} joins as a mercenary for this floor.`
+          : 'Nobody answers the call.',
+      );
+      if (tile) this.clearTile(tile);
+      this.changed();
+      return messages;
+    }
+
+    const army = this.run.armies.find((a) => a.id === armyId);
+    if (!army) {
+      // Never leave the tile unresolved: that would strand the node forever.
+      if (tile) this.clearTile(tile);
+      this.changed();
+      return ['Nothing happens.'];
+    }
 
     switch (purpose) {
       case 'HEALING_FOUNTAIN': {
@@ -481,13 +507,6 @@ export class RunManager {
         army.hpRatio = GameConfig.healing.resurrectionShrineHP;
         messages.push(`${getHero(army.heroId).name} returns to the banner.`);
         this.effectHost.rebuild();
-        break;
-      }
-      case 'RECRUITMENT_CAMP': {
-        // `armyId` carries the chosen mercenary hero id here.
-        const mercenary = this.recruitMercenary(armyId);
-        if (mercenary) messages.push(`${getHero(mercenary.heroId).name} joins as a mercenary.`);
-        else messages.push('Nobody answers the call.');
         break;
       }
       default:
@@ -545,7 +564,7 @@ export class RunManager {
 
   buildBattleSetup(encounter: EncounterData): BattleSetup {
     const asc = ascension(this.run.ascensionLevel);
-    const battleModifiers = this.run.armies
+    const battleModifiers: { armyId: string; effects: EffectDefinition[] }[] = this.run.armies
       .filter((a) => a.alive && a.battleModifiers.length > 0)
       .map((army) => ({
         armyId: army.id,
@@ -558,16 +577,17 @@ export class RunManager {
         })),
       }));
 
-    if ((this.run.flags.battleEnergyBonus ?? 0) > 0) {
+    // Energy Crystal: every army enters the next battle part-charged.
+    const energyBonus = this.run.flags.battleEnergyBonus ?? 0;
+    if (energyBonus > 0) {
       battleModifiers.push({
         armyId: '*',
         effects: [
           {
-            type: 'MODIFY_STAT' as const,
-            stat: 'attack',
-            mode: 'PERCENT' as const,
-            value: 0,
+            type: 'ENERGY' as const,
+            trigger: 'ON_BATTLE_START' as const,
             target: { scope: 'SELF' as const },
+            value: energyBonus,
           },
         ],
       });
@@ -641,6 +661,7 @@ export class RunManager {
     // Relic pre-battle buffs are consumed by the fight.
     for (const army of this.run.armies) army.battleModifiers = [];
     this.run.flags.guardianHPPenalty = 0;
+    this.run.flags.battleEnergyBonus = 0;
 
     if (result.outcome !== 'VICTORY') {
       this.changed();

@@ -9,9 +9,15 @@ import { RELICS } from '../data/relics';
 import { HEROES } from '../data/heroes';
 import { EVENTS } from '../data/events';
 
-/** Debug tooling is compiled out of production builds entirely. */
-export const DEBUG_ENABLED =
-  typeof import.meta !== 'undefined' && Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
+/**
+ * Debug tooling is compiled out of production builds entirely.
+ *
+ * Written as the bare `import.meta.env.DEV` on purpose: Vite replaces that
+ * exact expression with a literal at build time, so the whole debug module
+ * tree-shakes away. Wrapping it in optional chaining defeats the replacement
+ * and leaves the flag stuck at false in every build.
+ */
+export const DEBUG_ENABLED: boolean = import.meta.env.DEV;
 
 /**
  * Development-only debug panel.

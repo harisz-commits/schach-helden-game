@@ -28,7 +28,6 @@ export class RewardScene extends BaseScene {
   private manager!: RunManager;
   private inline = false;
   private offer!: PendingReward;
-  private claimedChest = false;
 
   constructor() {
     super('Reward');
@@ -36,7 +35,6 @@ export class RewardScene extends BaseScene {
 
   init(data: SceneData): void {
     this.inline = data.inline ?? false;
-    this.claimedChest = false;
   }
 
   create(): void {
@@ -47,12 +45,15 @@ export class RewardScene extends BaseScene {
     }
     this.manager = manager;
 
-    if (!this.inline) {
+    // Only mint a new offer when there is not one already in flight. A reroll
+    // restarts this scene, and regenerating here would silently discard it.
+    if (!manager.pendingReward) {
+      if (this.inline) {
+        this.goto('Map');
+        return;
+      }
       manager.run.pendingReward =
         manager.isCheckpointFloor() ? manager.createCheckpointChest() : manager.createBlessingOffer();
-    } else if (!manager.pendingReward) {
-      this.goto('Map');
-      return;
     }
     this.offer = manager.pendingReward!;
 
@@ -72,7 +73,8 @@ export class RewardScene extends BaseScene {
       },
     });
 
-    if (this.offer.kind === 'CHECKPOINT' && this.offer.chest && !this.claimedChest) {
+    // The chest is claimed once per floor, never again on a reroll restart.
+    if (this.offer.kind === 'CHECKPOINT' && this.offer.chest && manager.run.flags.chestClaimedFloor !== manager.floor) {
       this.time.delayedCall(200, () => this.openChest());
     }
   }
@@ -275,7 +277,7 @@ export class RewardScene extends BaseScene {
   private openChest(): void {
     const chest = this.offer.chest;
     if (!chest) return;
-    this.claimedChest = true;
+    this.manager.run.flags.chestClaimedFloor = this.manager.floor;
     const messages = this.manager.claimCheckpointChest(chest);
     audio.play('unlock');
     showModal(this, {

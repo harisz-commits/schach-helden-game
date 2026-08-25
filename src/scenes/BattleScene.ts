@@ -413,20 +413,46 @@ export class BattleScene extends BaseScene {
           sublabel: def.description,
           onClick: () => {
             closeTopModal(this);
-            const result = this.manager.useRelic(owned.uid, def.targeting === 'SINGLE_ARMY' ? this.manager.livingArmies[0]?.id : undefined);
-            for (const message of result.messages) this.toast(message, 'good');
-            if (def.id === 'smoke_bomb' && this.encounter.kind === 'ENEMY') {
-              const tile = this.manager.view.get(this.tileId);
-              if (tile) this.manager.fog.clearTile(tile);
-              this.goto('Map', { messages: ['You slip past the warband unseen.'] });
+            if (def.targeting === 'SINGLE_ARMY') {
+              this.pickRelicTarget(def.name, owned.uid);
               return;
             }
-            this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
+            this.applyRelic(owned.uid, def.id);
           },
         })),
         { label: 'CLOSE', variant: 'ghost' as const, onClick: () => closeTopModal(this) },
       ],
     });
+  }
+
+  /** Relics that buff or heal a single army let the player choose which. */
+  private pickRelicTarget(relicName: string, uid: string): void {
+    showModal(this, {
+      title: relicName,
+      body: 'Which army?',
+      maxWidth: 620,
+      actions: this.manager.livingArmies.map((army) => ({
+        label: getHero(army.heroId).name,
+        sublabel: `${Math.round(army.hpRatio * 100)}% HP · ${army.row === 'FRONT' ? 'Front' : 'Back'} row`,
+        onClick: () => {
+          closeTopModal(this);
+          this.applyRelic(uid, '', army.id);
+        },
+      })),
+    });
+  }
+
+  private applyRelic(uid: string, relicId: string, armyId?: string): void {
+    const result = this.manager.useRelic(uid, armyId);
+    for (const message of result.messages) this.toast(message, 'good');
+    // A Smoke Bomb skips the fight entirely rather than starting it.
+    if (relicId === 'smoke_bomb' && this.encounter.kind === 'ENEMY') {
+      const tile = this.manager.view.get(this.tileId);
+      if (tile) this.manager.fog.clearTile(tile);
+      this.goto('Map', { messages: ['You slip past the warband unseen.'] });
+      return;
+    }
+    this.scene.restart({ tileId: this.tileId, encounterId: this.encounter.id, fromEvent: this.fromEvent });
   }
 
   /* ---------------------------------------------------------------- */

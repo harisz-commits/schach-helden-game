@@ -99,8 +99,6 @@ export class RunEffectHost implements EffectHost {
         label: def.name,
       });
     }
-
-    this.triggers.restore(this.run.flags.__consumed ? [] : []);
   }
 
   /** Refreshes mirrors from the run state before a trigger fires. */

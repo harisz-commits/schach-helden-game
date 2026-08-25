@@ -6,3 +6,4 @@ dist-youtube/
 coverage/
 .vite/
 *.log
+dist-dev/
