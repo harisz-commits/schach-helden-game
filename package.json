@@ -1,0 +1,27 @@
+{
+  "name": "crownbound",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CROWNBOUND - a tactical roguelite expedition game.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:youtube": "cross-env BUILD_TARGET=youtube vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:soak": "cross-env SOAK=1 vitest run tests/map.soak.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.5"
+  }
+}
