@@ -115,9 +115,14 @@ export class MapScene extends BaseScene {
   /* HUD                                                               */
   /* ---------------------------------------------------------------- */
 
+  /** Never let the HUD touch the top edge - notches and rounded corners eat it. */
+  private get safeTop(): number {
+    return Math.max(this.fs(8), 10);
+  }
+
   private get hudHeight(): number {
     const rows = Math.ceil(this.manager.armies.length / (this.W > this.fs(560) ? 5 : 3));
-    return this.fs(58) + rows * this.fs(40);
+    return this.safeTop + this.fs(54) + rows * this.fs(40);
   }
 
   private drawHUD(): void {
@@ -134,14 +139,14 @@ export class MapScene extends BaseScene {
 
     const totalFloors = run.mode === 'ENDLESS' ? '∞' : `${GameConfig.run.totalFloors}`;
     this.hudLayer.add(
-      this.label(pad, this.fs(14), `FLOOR ${run.floor} / ${totalFloors}`, {
+      this.label(pad, this.safeTop + this.fs(6), `FLOOR ${run.floor} / ${totalFloors}`, {
         size: 17,
         color: Theme.color.goldBright,
         letterSpacing: 2,
       }),
     );
     this.hudLayer.add(
-      this.label(pad, this.fs(36), biome.name.toUpperCase(), {
+      this.label(pad, this.safeTop + this.fs(28), biome.name.toUpperCase(), {
         size: 10,
         color: Theme.color.textFaint,
         font: 'body',
@@ -152,7 +157,7 @@ export class MapScene extends BaseScene {
     // Guardian status - the player must always know what is left to do.
     const guardianText = this.manager.guardianDefeated ? 'GUARDIAN DEFEATED · EXIT OPEN' : 'GUARDIAN AWAITS';
     this.hudLayer.add(
-      this.label(this.W - pad, this.fs(36), guardianText, {
+      this.label(this.W - pad, this.safeTop + this.fs(28), guardianText, {
         size: 10,
         color: this.manager.guardianDefeated ? Theme.color.good : Theme.color.warn,
         font: 'body',
@@ -161,7 +166,7 @@ export class MapScene extends BaseScene {
       }),
     );
 
-    const menu = new Button(this, this.W - pad - this.fs(28), this.fs(20), {
+    const menu = new Button(this, this.W - pad - this.fs(28), this.safeTop + this.fs(14), {
       width: this.fs(56),
       height: this.fs(28),
       label: 'MENU',
@@ -180,7 +185,7 @@ export class MapScene extends BaseScene {
     const pad = this.fs(10);
     const cardWidth = (this.W - pad * 2 - (perRow - 1) * this.fs(6)) / perRow;
     const cardHeight = this.fs(36);
-    const top = this.fs(52);
+    const top = this.safeTop + this.fs(48);
 
     armies.forEach((army, index) => {
       const row = Math.floor(index / perRow);
