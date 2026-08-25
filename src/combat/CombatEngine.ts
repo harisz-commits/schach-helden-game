@@ -311,6 +311,9 @@ export class CombatEngine implements EffectHost {
 
   private start(): void {
     this.refreshAllStats();
+    for (const combatant of this.combatants) {
+      if (combatant.skill) combatant.energy = GameConfig.combat.startingEnergy;
+    }
     this.emit({ trigger: 'ON_BATTLE_START' });
     this.refreshAllStats();
     for (const combatant of this.combatants) {
@@ -567,8 +570,8 @@ export class CombatEngine implements EffectHost {
     const dx = target.x - combatant.x;
     const dy = target.y - combatant.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    // Stop at 80% of weapon range so the unit is comfortably in range.
-    const stopAt = Math.max(GameConfig.combat.lane.minSeparation, combatant.stats.range * 0.8);
+    // Stop just inside weapon range, never closer than the separation floor.
+    const stopAt = Math.max(GameConfig.combat.lane.minSeparation, combatant.stats.range * 0.92);
     const travel = Math.min(combatant.stats.movementSpeed * dt, Math.max(0, dist - stopAt));
     if (travel <= 0) return;
     combatant.x += (dx / dist) * travel;

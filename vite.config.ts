@@ -12,15 +12,6 @@ export default defineConfig({
   },
   define: {
     __BUILD_TARGET__: JSON.stringify(isYouTube ? 'youtube' : 'web'),
-    // Phaser tree-shaking flags.
-    'typeof CANVAS_RENDERER': JSON.stringify(true),
-    'typeof WEBGL_RENDERER': JSON.stringify(true),
-    'typeof WEBGL_DEBUG': JSON.stringify(false),
-    'typeof EXPERIMENTAL': JSON.stringify(false),
-    'typeof PLUGIN_3D': JSON.stringify(false),
-    'typeof PLUGIN_CAMERA3D': JSON.stringify(false),
-    'typeof PLUGIN_FBINSTANT': JSON.stringify(false),
-    'typeof FEATURE_SOUND': JSON.stringify(true),
   },
   build: {
     target: 'es2020',

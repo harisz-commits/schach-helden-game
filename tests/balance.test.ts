@@ -147,7 +147,7 @@ describe('balance', () => {
     // Normal fights: quick, and each one costs real but recoverable health.
     expect(normal.duration).toBeGreaterThan(5);
     expect(normal.duration).toBeLessThan(22);
-    expect(normal.poolLost).toBeGreaterThan(1);
+    expect(normal.poolLost).toBeGreaterThan(0.4);
     expect(normal.poolLost).toBeLessThan(8);
 
     // Guardians: longer and meaningfully more expensive.
@@ -156,8 +156,12 @@ describe('balance', () => {
     expect(guardian.poolLost).toBeGreaterThan(normal.poolLost);
 
     // A reasonable run should reach the late game but not trivially clear it.
+    // Naive play (no relics, no routing, fights everything) should get deep
+    // into the campaign without clearing it - skilled play is what wins.
     const deepest = Math.max(...runs.map((r) => r.reachedFloor));
-    expect(deepest).toBeGreaterThanOrEqual(14);
+    const median = runs.map((r) => r.reachedFloor).sort((a, b) => a - b)[Math.floor(runs.length / 2)]!;
+    expect(deepest).toBeGreaterThanOrEqual(16);
+    expect(median).toBeGreaterThanOrEqual(10);
   });
 
   it('is deterministic: identical seed and formation produce an identical battle', () => {

@@ -45,8 +45,8 @@ export const GameConfig = {
       MERCENARY: 1,
     } as Record<string, number>,
     /** Enemy HP is scaled a little harder than damage so fights stay readable. */
-    enemyHPFactor: 1.05,
-    enemyAttackFactor: 1.55,
+    enemyHPFactor: 1.45,
+    enemyAttackFactor: 2.2,
     /** Defence grows on a softer curve so late floors are not HP sponges. */
     enemyDefenseExponent: 0.55,
     /** Endless keeps growing past floor 20 with an extra per-floor multiplier. */
@@ -61,7 +61,13 @@ export const GameConfig = {
     stalemateStart: 40,
     stalemateRampPerSecond: 0.03,
     energyMax: 100,
-    energyPerBasicAttack: 10,
+    /**
+     * Armies enter a fight already part-charged, and each swing charges them
+     * meaningfully. Without this, a 10-second normal battle ends before anyone
+     * reaches 100 Energy and active skills never appear outside boss fights.
+     */
+    startingEnergy: 25,
+    energyPerBasicAttack: 14,
     /** Energy gained per 1% of max HP lost. */
     energyPerHPPercentLost: 0.4,
     energyOnDamageCap: 12,
@@ -71,12 +77,12 @@ export const GameConfig = {
     defenseConstant: 100,
     /** Lane geometry in abstract combat units. */
     lane: {
-      frontX: 150,
-      backX: 250,
-      slotSpacing: 62,
+      frontX: 160,
+      backX: 268,
+      slotSpacing: 84,
       meleeRange: 78,
-      /** Units cannot walk past this many units into the enemy half. */
-      minSeparation: 46,
+      /** Closest two units will ever stand, so sprites never fully overlap. */
+      minSeparation: 68,
     },
     speeds: [1, 2, 4] as number[],
     /** 4x is unlocked after the first full clear. */
