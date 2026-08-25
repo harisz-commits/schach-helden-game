@@ -35,6 +35,8 @@ export class MapScene extends BaseScene {
   private tileSize = 48;
   private gridOrigin = { x: 0, y: 0 };
   private pulseTargets: Phaser.GameObjects.Graphics[] = [];
+  /** Relic waiting for the player to pick which army it applies to. */
+  private pendingRelicUid: string | null = null;
 
   constructor() {
     super('Map');
@@ -631,8 +633,6 @@ export class MapScene extends BaseScene {
       })),
     });
   }
-
-  private pendingRelicUid: string | null = null;
 
   private useRelicOnArmy(_purpose: ArmyChoicePurpose, armyId: string): string[] {
     if (!this.pendingRelicUid) return [];

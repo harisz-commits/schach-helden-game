@@ -325,6 +325,8 @@ npm test
 | `combat.test.ts`    | Determinism, persistent damage, formation, scaling, blessings |
 | `save.test.ts`      | Save → load fidelity, migration, partial-save repair          |
 | `progression.test.ts` | Hero unlocks, achievements, mastery, ascension gating       |
+| `run.test.ts`       | A complete 20-floor expedition driven through RunManager: floor transitions, rewards, guardian gating, save/resume, loss |
+| `modes.test.ts`     | Endless past Floor 20, Daily seed sharing, Lieutenants        |
 | `balance.test.ts`   | Full 20-floor simulations; asserts duration and attrition bands |
 
 The balance suite doubles as a tuning tool:
@@ -350,10 +352,16 @@ spawn an event, reset the profile.
 `window.__crownbound` exposes a small scripting surface for the console:
 
 ```js
-__crownbound.frontier()      // tiles you can act on
-__crownbound.tap('ENEMY')    // act on a tile by id or type
-__crownbound.armies()        // health of every army
+__crownbound.frontier()          // tiles you can act on
+__crownbound.tap('ENEMY')        // act on a tile by id or type
+__crownbound.armies()            // health of every army
+__crownbound.labels()            // every visible label on screen
+__crownbound.findLabel('CLOSE')  // where a button is, so you can click it
 ```
+
+`findLabel` is registered in every scene, which makes the whole UI - modals
+included - drivable through the real input pipeline rather than by guessing
+coordinates.
 
 ---
 

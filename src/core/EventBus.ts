@@ -44,13 +44,11 @@ export class EventBus<Events extends Record<string, unknown>> {
 
 export interface GameEvents extends Record<string, unknown> {
   'run:started': { seed: number };
-  'run:updated': Record<string, never>;
   'run:ended': { won: boolean };
   'profile:updated': Record<string, never>;
   'hero:unlocked': { heroId: string };
   'achievement:unlocked': { achievementId: string };
   'mastery:unlocked': { heroId: string; tier: number };
-  'toast': { text: string; tone?: 'gold' | 'good' | 'bad' };
 }
 
 export const gameEvents = new EventBus<GameEvents>();
