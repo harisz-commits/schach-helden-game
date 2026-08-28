@@ -164,3 +164,91 @@ export function ensureSparkTexture(scene: Phaser.Scene): string {
   g.destroy();
   return key;
 }
+
+/* ------------------------------------------------------------------ */
+/* Troop formations                                                    */
+/* ------------------------------------------------------------------ */
+
+const TROOP_W = 26;
+const TROOP_H = 34;
+
+/**
+ * A single rank-and-file soldier.
+ *
+ * An "army" in CROWNBOUND is a formation, not one hero. Drawing the troops
+ * behind the leader - and removing them as the army's health drops - is what
+ * makes persistent damage legible: you watch the banner thin out across a
+ * floor instead of reading a percentage.
+ */
+export function ensureTroopTexture(scene: Phaser.Scene, shape: string, color: number, accent: number): string {
+  const key = `troop_${shape}_${color.toString(16)}_${accent.toString(16)}`;
+  if (CACHE.has(key) && scene.textures.exists(key)) return key;
+
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  const cx = TROOP_W / 2;
+  const dark = darken(color, 0.5);
+  const mid = darken(color, 0.82);
+
+  g.fillStyle(0x000000, 0.25);
+  g.fillEllipse(cx, TROOP_H - 3, TROOP_W * 0.58, 5);
+
+  // Legs and torso.
+  g.fillStyle(dark, 1);
+  g.fillRect(cx - 5, TROOP_H - 12, 4, 10);
+  g.fillRect(cx + 1, TROOP_H - 12, 4, 10);
+  g.fillStyle(mid, 1);
+  g.fillRoundedRect(cx - 7, 12, 14, 15, 3);
+
+  // Weapon silhouette, so roles stay readable even at this size.
+  g.fillStyle(accent, 1);
+  switch (shape) {
+    case 'BULWARK':
+      g.fillRoundedRect(cx - 10, 14, 8, 13, 2);
+      break;
+    case 'BOW':
+      g.fillRect(cx + 7, 10, 2, 18);
+      break;
+    case 'STAFF':
+    case 'CHALICE':
+      g.fillRect(cx + 7, 6, 2, 22);
+      g.fillCircle(cx + 8, 5, 3);
+      break;
+    case 'LANCE':
+      g.fillRect(cx + 6, 2, 2, 26);
+      break;
+    case 'BLADE':
+    default:
+      g.fillRect(cx + 7, 6, 2, 16);
+      g.fillRect(cx + 4, 12, 8, 2);
+      break;
+  }
+
+  // Helmet.
+  g.fillStyle(dark, 1);
+  g.fillCircle(cx, 9, 6);
+  g.fillStyle(color, 1);
+  g.fillCircle(cx, 8, 5);
+
+  g.generateTexture(key, TROOP_W, TROOP_H);
+  g.destroy();
+  CACHE.add(key);
+  return key;
+}
+
+/**
+ * Formation slots behind the leader, in normalised units.
+ *
+ * Ordered back-to-front so that shrinking the visible count removes the rear
+ * ranks first - the formation reads as thinning out, not dissolving randomly.
+ */
+export const TROOP_SLOTS: { x: number; y: number }[] = [
+  { x: -1.1, y: 2.5 },
+  { x: 0, y: 2.66 },
+  { x: 1.1, y: 2.5 },
+  { x: -1.65, y: 1.76 },
+  { x: -0.55, y: 1.92 },
+  { x: 0.55, y: 1.92 },
+  { x: 1.65, y: 1.76 },
+  { x: -1.12, y: 1.04 },
+  { x: 1.12, y: 1.04 },
+];

@@ -79,10 +79,10 @@ export const GameConfig = {
     lane: {
       frontX: 160,
       backX: 268,
-      slotSpacing: 84,
+      slotSpacing: 104,
       meleeRange: 78,
       /** Closest two units will ever stand, so sprites never fully overlap. */
-      minSeparation: 68,
+      minSeparation: 86,
     },
     speeds: [1, 2, 4] as number[],
     /** 4x is unlocked after the first full clear. */

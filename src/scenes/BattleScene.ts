@@ -5,7 +5,9 @@ import { Theme, hpColor, textResolution, toCss } from '../ui/theme';
 import { Button } from '../ui/components/Button';
 import { drawPanel } from '../ui/components/Panel';
 import { closeTopModal, showModal } from '../ui/overlays/Modal';
-import { ensureUnitTexture } from '../ui/Sprites';
+import { TROOP_SLOTS, ensureTroopTexture, ensureUnitTexture } from '../ui/Sprites';
+import { lighten, shade } from '../ui/TileTerrain';
+import { BIOMES_BY_ID, biomeForFloor } from '../data/floors';
 import { session } from '../run/GameSession';
 import { saveManager } from '../save/SaveManager';
 import { audio } from '../audio/AudioManager';
@@ -28,7 +30,10 @@ interface SceneData {
 interface UnitView {
   combatant: Combatant;
   container: Phaser.GameObjects.Container;
+  /** The captain: the large silhouette at the front of the formation. */
   sprite: Phaser.GameObjects.Image;
+  /** Rank-and-file behind the captain; culled as the army loses health. */
+  troops: Phaser.GameObjects.Image[];
   hpBar: Phaser.GameObjects.Graphics;
   energyBar: Phaser.GameObjects.Graphics;
   lastHP: number;
@@ -634,6 +639,7 @@ export class BattleScene extends BaseScene {
     this.views.clear();
     this.logCursor = 0;
     this.paintBackground(Theme.color.bgAlt, Theme.color.enemy);
+    this.drawBattlefield();
     this.fieldLayer = this.add.container(0, 0);
     this.buildFightHUD();
     this.buildUnits();
@@ -679,6 +685,61 @@ export class BattleScene extends BaseScene {
     this.speedButton?.setLabel(`${this.speed}x`);
   }
 
+  /**
+   * Ground the fight actually happens on.
+   *
+   * The two sides get their own half of the field in the biome's colours with
+   * a lit seam between them, so the battle reads as a place rather than two
+   * rows of sprites on an empty background.
+   */
+  private drawBattlefield(): void {
+    const biome = BIOMES_BY_ID[this.manager.view.data.biomeId] ?? biomeForFloor(this.manager.floor);
+    const rect = this.fieldRect();
+    const g = this.add.graphics().setDepth(-50);
+
+    // Enemy half sits "further away" and is darker; the player half is lit.
+    const far = shade(biome.palette.tile, 0.45);
+    const near = biome.palette.tile;
+    if (this.isPortrait) {
+      g.fillStyle(far, 1);
+      g.fillRect(rect.x, rect.y, rect.width, rect.height / 2);
+      g.fillStyle(near, 1);
+      g.fillRect(rect.x, rect.y + rect.height / 2, rect.width, rect.height / 2);
+    } else {
+      g.fillStyle(near, 1);
+      g.fillRect(rect.x, rect.y, rect.width / 2, rect.height);
+      g.fillStyle(far, 1);
+      g.fillRect(rect.x + rect.width / 2, rect.y, rect.width / 2, rect.height);
+    }
+
+    // Blend the halves across several soft bands. A single hard edge reads as
+    // a painted stripe rather than ground receding into the distance.
+    const bands = 7;
+    for (let i = 0; i < bands; i++) {
+      const t = i / bands;
+      g.fillStyle(far, 0.16 * (1 - t));
+      const thickness = this.fs(7);
+      if (this.isPortrait) {
+        g.fillRect(rect.x, rect.y + rect.height / 2 + i * thickness, rect.width, thickness);
+      } else {
+        g.fillRect(rect.x + rect.width / 2 - (i + 1) * thickness, rect.y, thickness, rect.height);
+      }
+    }
+    const seam = lighten(biome.palette.accent, 0.1);
+    g.fillStyle(seam, 0.08);
+    if (this.isPortrait) {
+      g.fillRect(rect.x, rect.y + rect.height / 2 - this.fs(1), rect.width, this.fs(2));
+    } else {
+      g.fillRect(rect.x + rect.width / 2 - this.fs(1), rect.y, this.fs(2), rect.height);
+    }
+
+    // Vignette back to the scene background so the field has soft edges.
+    g.fillStyle(Theme.color.bg, 0.55);
+    const band = this.fs(26);
+    g.fillRect(rect.x, rect.y, rect.width, band);
+    g.fillRect(rect.x, rect.y + rect.height - band, rect.width, band);
+  }
+
   private fieldRect(): { x: number; y: number; width: number; height: number } {
     const top = this.fs(58);
     const bottom = this.H - this.fs(20);
@@ -720,6 +781,11 @@ export class BattleScene extends BaseScene {
     for (const combatant of this.engine.snapshot()) {
       const key = ensureUnitTexture(this, combatant.art.shape, combatant.art.color, combatant.art.accent);
       const container = this.add.container(0, 0);
+
+      // Rank-and-file first so they draw behind their captain.
+      const troops = this.buildTroops(combatant, spriteWidth);
+      container.add(troops);
+
       const sprite = this.add.image(0, 0, key).setDisplaySize(spriteWidth, spriteHeight);
       if (!combatant.isPlayer && !this.isPortrait) sprite.setFlipX(true);
       container.add(sprite);
@@ -729,7 +795,7 @@ export class BattleScene extends BaseScene {
       const energyBar = this.add.graphics();
       container.add([hpBar, energyBar]);
 
-      const nameLabel = this.label(0, spriteHeight * 0.58, combatant.name, {
+      const nameLabel = this.label(0, this.readoutSide(combatant) * spriteHeight * 0.8, combatant.name, {
         size: 9,
         color: combatant.isPlayer ? Theme.color.text : Theme.color.textDim,
         font: 'body',
@@ -743,19 +809,33 @@ export class BattleScene extends BaseScene {
         combatant,
         container,
         sprite,
+        troops,
         hpBar,
         energyBar,
         lastHP: combatant.currentHP,
       });
+      this.updateTroops(this.views.get(combatant.id)!);
       this.drawUnitBars(this.views.get(combatant.id)!, barWidth, spriteHeight);
     }
     this.positionUnits();
   }
 
+  /**
+   * Which side of a unit its bars and name sit on.
+   *
+   * The formation occupies the space behind the captain, so the readout goes
+   * on the free side - above for the player, below for the enemy in portrait.
+   */
+  private readoutSide(combatant: Combatant): number {
+    if (!this.isPortrait) return -1;
+    return combatant.isPlayer ? -1 : 1;
+  }
+
   private drawUnitBars(view: UnitView, width: number, spriteHeight: number): void {
     const { combatant, hpBar, energyBar } = view;
     const ratio = combatant.stats.maxHP > 0 ? Math.max(0, combatant.currentHP / combatant.stats.maxHP) : 0;
-    const top = -spriteHeight * 0.56;
+    const side = this.readoutSide(combatant);
+    const top = side < 0 ? -spriteHeight * 0.56 : spriteHeight * 0.5;
     const height = Math.max(3, this.fs(4));
 
     hpBar.clear();
@@ -788,6 +868,47 @@ export class BattleScene extends BaseScene {
     return Math.max(this.fs(28), 64 * this.fieldScale());
   }
 
+  /**
+   * Places the formation behind its captain.
+   *
+   * "Behind" depends on the layout: portrait rotates the lane so the player
+   * faces up the screen, landscape keeps them facing right.
+   */
+  private buildTroops(combatant: Combatant, leaderWidth: number): Phaser.GameObjects.Image[] {
+    const key = ensureTroopTexture(this, combatant.art.shape, combatant.art.color, combatant.art.accent);
+    const troopWidth = leaderWidth * 0.38;
+    const troopHeight = troopWidth * 1.3;
+    const back = combatant.isPlayer ? 1 : -1;
+    // Start the first rank past the captain's feet so he stays readable in front.
+    const anchor = leaderWidth * 1.28 * 0.42;
+    const images: Phaser.GameObjects.Image[] = [];
+
+    for (const slot of TROOP_SLOTS) {
+      const along = (anchor + slot.y * troopHeight * 0.42) * back;
+      const across = slot.x * troopWidth * 0.95;
+      const x = this.isPortrait ? across : -along;
+      const y = this.isPortrait ? along : across;
+      const image = this.add.image(x, y, key).setDisplaySize(troopWidth, troopHeight);
+      if (!combatant.isPlayer && !this.isPortrait) image.setFlipX(true);
+      images.push(image);
+    }
+    return images;
+  }
+
+  /** Shows one soldier per slice of remaining health. */
+  private updateTroops(view: UnitView): void {
+    const { combatant, troops } = view;
+    if (troops.length === 0) return;
+    const ratio = combatant.alive && combatant.stats.maxHP > 0
+      ? Math.max(0, Math.min(1, combatant.currentHP / combatant.stats.maxHP))
+      : 0;
+    // Rear ranks fall first, so the formation visibly thins from the back.
+    const standing = combatant.alive ? Math.round(troops.length * ratio) : 0;
+    for (let i = 0; i < troops.length; i++) {
+      troops[i]!.setVisible(i >= troops.length - standing);
+    }
+  }
+
   private positionUnits(): void {
     for (const view of this.views.values()) {
       const pos = this.toScreen(view.combatant.x, view.combatant.y);
@@ -809,6 +930,7 @@ export class BattleScene extends BaseScene {
       view.container.setPosition(pos.x, pos.y);
       view.container.setDepth(this.depthFor(view.combatant));
       view.container.setAlpha(view.combatant.alive ? 1 : 0.18);
+      this.updateTroops(view);
       this.drawUnitBars(view, spriteWidth * 1.05, spriteWidth * 1.28);
     }
 
@@ -835,7 +957,7 @@ export class BattleScene extends BaseScene {
       case 'DAMAGE': {
         const view = entry.targetId ? this.views.get(entry.targetId) : undefined;
         if (!view) return;
-        this.flash(view, entry.isCrit ? Theme.color.goldBright : 0xffffff);
+        this.flash(view, entry.isCrit ? Theme.color.goldBright : 0xffb4a8);
         if (showNumbers && entry.amount !== undefined) {
           this.floatNumber(view, Math.round(entry.amount), entry.isCrit ?? false, view.combatant.isPlayer);
         }
@@ -886,8 +1008,13 @@ export class BattleScene extends BaseScene {
 
   private flash(view: UnitView, color: number): void {
     if (session.profile.settings.reduceMotion) return;
-    view.sprite.setTintFill(color);
-    this.time.delayedCall(70, () => view.sprite.clearTint());
+    // A tint keeps the unit's shape; tintFill turned it into a white blob.
+    view.sprite.setTint(color);
+    for (const troop of view.troops) troop.setTint(color);
+    this.time.delayedCall(70, () => {
+      view.sprite.clearTint();
+      for (const troop of view.troops) troop.clearTint();
+    });
   }
 
   private floatNumber(view: UnitView, amount: number, crit: boolean, onPlayer: boolean): void {

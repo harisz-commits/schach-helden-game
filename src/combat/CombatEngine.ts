@@ -578,7 +578,9 @@ export class CombatEngine implements EffectHost {
     const travel = Math.min(combatant.stats.movementSpeed * dt, Math.max(0, dist - stopAt));
     if (travel <= 0) return;
     combatant.x += (dx / dist) * travel;
-    combatant.y += (dy / dist) * travel;
+    // Damped lateral drift: armies wheel toward their target but hold their
+    // lane, so five formations do not collapse into one pile in the middle.
+    combatant.y += (dy / dist) * travel * 0.45;
   }
 
   private basicAttack(attacker: Combatant, target: Combatant): void {

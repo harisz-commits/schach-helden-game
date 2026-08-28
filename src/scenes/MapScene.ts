@@ -6,6 +6,7 @@ import { Button } from '../ui/components/Button';
 import { drawPanel } from '../ui/components/Panel';
 import { closeTopModal, showModal } from '../ui/overlays/Modal';
 import { TILE_DESCRIPTION, TILE_LABEL, drawTileGlyph, tileAccent } from '../ui/TileGlyphs';
+import { drawFogCloud, drawPedestal, drawTileSurface, lighten } from '../ui/TileTerrain';
 import { session } from '../run/GameSession';
 import { saveManager } from '../save/SaveManager';
 import { audio } from '../audio/AudioManager';
@@ -20,6 +21,21 @@ interface SceneData {
   messages?: string[];
   banner?: string;
 }
+
+/** Tile types drawn as built structures standing on the ground. */
+const STRUCTURE_TILES = new Set<TileData['type']>([
+  'MERCHANT',
+  'HEALING_FOUNTAIN',
+  'SACRED_SPRING',
+  'SHRINE',
+  'TEMPLE',
+  'ORACLE_TOWER',
+  'ALTAR',
+  'WAR_CAMP',
+  'RECRUITMENT_CAMP',
+  'RESURRECTION_SHRINE',
+  'EXIT',
+]);
 
 /**
  * The exploration screen: HUD, fog-of-war grid and every non-combat
@@ -330,36 +346,40 @@ export class MapScene extends BaseScene {
     const exitLocked = tile.type === 'EXIT' && !this.manager.guardianDefeated;
 
     const g = this.add.graphics();
-    const fill = !known
-      ? biome.palette.fog
-      : cleared
-        ? biome.palette.tile
-        : interactable
-          ? biome.palette.tileAlt
-          : biome.palette.tile;
-    g.fillStyle(fill, known ? 1 : 0.92);
-    g.fillRoundedRect(-size / 2, -size / 2, size, size, Math.max(3, size * 0.14));
-    g.lineStyle(1, Theme.color.border, known ? 0.7 : 0.35);
-    g.strokeRoundedRect(-size / 2, -size / 2, size, size, Math.max(3, size * 0.14));
+    drawTileSurface(g, tile, { size, biome, known, cleared, active: interactable });
     container.add(g);
 
     if (!known) {
-      container.add(
-        this.label(0, 0, '?', {
-          size: Math.round(size * 0.34),
-          color: Theme.color.textFaint,
-          origin: [0.5, 0.5],
-          align: 'center',
-          alpha: 0.55,
-        }),
-      );
+      // Unexplored ground stays under cloud until the fog front reaches it.
+      const fog = this.add.graphics();
+      drawFogCloud(fog, tile, size, biome);
+      container.add(fog);
       return container;
     }
 
-    // Glyph.
-    const glyph = this.add.graphics();
+    // Structures stand on a pedestal so they read as buildings on ground,
+    // rather than icons floating on a coloured square.
+    if (!cleared && STRUCTURE_TILES.has(tile.type)) {
+      const base = this.add.graphics();
+      drawPedestal(base, size, biome);
+      container.add(base);
+    }
+
     const accent = tileAccent(tile.type);
-    drawTileGlyph(glyph, cleared ? 'EMPTY' : tile.type, size * 0.6, cleared ? Theme.color.textFaint : accent);
+    if (!cleared) {
+      // A soft drop shadow lifts the glyph off the terrain.
+      const shadow = this.add.graphics();
+      drawTileGlyph(shadow, tile.type, size * 0.6, 0x000000);
+      shadow.setAlpha(0.3).setPosition(size * 0.035, size * 0.045);
+      container.add(shadow);
+    }
+    const glyph = this.add.graphics();
+    drawTileGlyph(
+      glyph,
+      cleared ? 'EMPTY' : tile.type,
+      size * 0.6,
+      cleared ? Theme.color.textFaint : lighten(accent, 0.12),
+    );
     glyph.setAlpha(cleared ? 0.4 : tile.state === 'REVEALED' || tile.scouted ? 1 : 0.5);
     container.add(glyph);
 
