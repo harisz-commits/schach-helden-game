@@ -6,7 +6,17 @@ import { Button } from '../ui/components/Button';
 import { drawPanel } from '../ui/components/Panel';
 import { closeTopModal, showModal } from '../ui/overlays/Modal';
 import { TILE_DESCRIPTION, TILE_LABEL, drawTileGlyph, tileAccent } from '../ui/TileGlyphs';
-import { drawFogCloud, drawPedestal, drawTileSurface, lighten } from '../ui/TileTerrain';
+import {
+  TILE_RATIO,
+  drawFogCloud,
+  drawPedestal,
+  drawTileSurface,
+  isoDiamondHitArea,
+  isoGridBounds,
+  isoProject,
+  lighten,
+  strokeTileDiamond,
+} from '../ui/TileTerrain';
 import { session } from '../run/GameSession';
 import { saveManager } from '../save/SaveManager';
 import { audio } from '../audio/AudioManager';
@@ -48,8 +58,15 @@ export class MapScene extends BaseScene {
   private hudLayer!: Phaser.GameObjects.Container;
   private pendingMessages: string[] = [];
   private pendingBanner: string | null = null;
-  private tileSize = 48;
+  /** Width of a tile's diamond. Height is derived via TILE_RATIO. */
+  private tileSize = 64;
   private gridOrigin = { x: 0, y: 0 };
+  /** Board pan offset, clamped so the grid can never be dragged off screen. */
+  private boardOffset = { x: 0, y: 0 };
+  private panBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  private dragging = false;
+  private dragMoved = 0;
+  private dragLast = { x: 0, y: 0 };
   private pulseTargets: Phaser.GameObjects.Graphics[] = [];
   /** Relic waiting for the player to pick which army it applies to. */
   private pendingRelicUid: string | null = null;
@@ -80,6 +97,7 @@ export class MapScene extends BaseScene {
 
     this.drawHUD();
     this.drawGrid();
+    this.centreOnAction();
     this.drawBottomBar();
     this.enableResponsiveLayout();
     this.fadeIn();
@@ -93,6 +111,13 @@ export class MapScene extends BaseScene {
       guardianDefeated: () => this.manager.guardianDefeated,
       /** Tiles the player can act on right now. */
       frontier: () => this.manager.fog.frontier().map((t) => ({ id: t.id, type: t.type })),
+      /** Screen position of a tile, so a test can tap the real hit area. */
+      tileAt: (id: string) => {
+        const tile = this.manager.view.get(id);
+        if (!tile) return null;
+        const pos = this.tilePosition(tile);
+        return { x: pos.x + this.boardOffset.x, y: pos.y + this.boardOffset.y };
+      },
       /** Acts on a reachable tile, by id or by type. */
       tap: (selector: string) => {
         const frontier = this.manager.fog.frontier();
@@ -298,45 +323,124 @@ export class MapScene extends BaseScene {
     this.pulseTargets = [];
 
     const view = this.manager.view;
-    const top = this.hudHeight + this.fs(10);
-    const bottom = this.H - this.bottomBarHeight - this.fs(10);
-    const availableWidth = this.W - this.fs(16);
+    const top = this.hudHeight + this.fs(6);
+    const bottom = this.H - this.bottomBarHeight - this.fs(6);
+    const availableWidth = this.W - this.fs(12);
     const availableHeight = bottom - top;
-    const gap = this.fs(4);
 
-    const size = Math.floor(
-      Math.min(
-        (availableWidth - (view.width - 1) * gap) / view.width,
-        (availableHeight - (view.height - 1) * gap) / view.height,
-      ),
-    );
-    this.tileSize = Math.max(22, size);
+    // Fit the whole floor when it will fit at a readable size; otherwise keep
+    // tiles legible and let the player pan, which is how the reference handles
+    // large floors on a phone.
+    const spanUnits = (view.width + view.height) / 2;
+    const fitByHeight = availableHeight / (spanUnits * TILE_RATIO + 1);
+    const minTile = Math.max(46, this.fs(52));
+    const maxTile = this.fs(120);
+    this.tileSize = Math.max(minTile, Math.min(maxTile, fitByHeight));
 
-    const gridWidth = view.width * this.tileSize + (view.width - 1) * gap;
-    const gridHeight = view.height * this.tileSize + (view.height - 1) * gap;
+    const bounds = isoGridBounds(view.width, view.height, this.tileSize);
+    const gridWidth = bounds.maxX - bounds.minX;
+    const gridHeight = bounds.maxY - bounds.minY;
+
+    // Anchor so projected (0,0) lands where the grid's top-left corner should.
     this.gridOrigin = {
-      x: (this.W - gridWidth) / 2 + this.tileSize / 2,
-      y: top + (availableHeight - gridHeight) / 2 + this.tileSize / 2,
+      x: this.W / 2 - (bounds.minX + bounds.maxX) / 2,
+      y: top + availableHeight / 2 - (bounds.minY + bounds.maxY) / 2,
     };
 
-    for (const tile of view.tiles) {
-      const cell = this.buildTile(tile, gap);
+    // How far the board may travel before the grid leaves the viewport.
+    const slackX = Math.max(0, (gridWidth - availableWidth) / 2);
+    const slackY = Math.max(0, (gridHeight - availableHeight) / 2);
+    this.panBounds = { minX: -slackX, maxX: slackX, minY: -slackY, maxY: slackY };
+    this.boardOffset = {
+      x: Phaser.Math.Clamp(this.boardOffset.x, this.panBounds.minX, this.panBounds.maxX),
+      y: Phaser.Math.Clamp(this.boardOffset.y, this.panBounds.minY, this.panBounds.maxY),
+    };
+
+    // Back to front, so tiles nearer the camera overlap the ones behind them.
+    const ordered = [...view.tiles].sort((a, b) => a.x + a.y - (b.x + b.y));
+    for (const tile of ordered) {
+      const cell = this.buildTile(tile);
       if (cell) this.gridLayer.add(cell);
     }
 
+    this.gridLayer.setPosition(this.boardOffset.x, this.boardOffset.y);
+    this.enableBoardPan(gridWidth > availableWidth || gridHeight > availableHeight);
   }
 
-  private tilePosition(tile: TileData, gap: number): { x: number; y: number } {
-    return {
-      x: this.gridOrigin.x + tile.x * (this.tileSize + gap),
-      y: this.gridOrigin.y + tile.y * (this.tileSize + gap),
+  /**
+   * Drag-to-pan for floors too large to fit. The gridLayer moves as a whole;
+   * tiles keep their own tap handling and simply ignore taps that travelled.
+   */
+  private enableBoardPan(needed: boolean): void {
+    if (!needed) return;
+    const onDown = (pointer: Phaser.Input.Pointer) => {
+      this.dragging = true;
+      this.dragMoved = 0;
+      this.dragLast = { x: pointer.x, y: pointer.y };
     };
+    const onMove = (pointer: Phaser.Input.Pointer) => {
+      if (!this.dragging || !pointer.isDown) return;
+      const dx = pointer.x - this.dragLast.x;
+      const dy = pointer.y - this.dragLast.y;
+      this.dragLast = { x: pointer.x, y: pointer.y };
+      this.dragMoved += Math.hypot(dx, dy);
+      this.boardOffset.x = Phaser.Math.Clamp(this.boardOffset.x + dx, this.panBounds.minX, this.panBounds.maxX);
+      this.boardOffset.y = Phaser.Math.Clamp(this.boardOffset.y + dy, this.panBounds.minY, this.panBounds.maxY);
+      this.gridLayer.setPosition(this.boardOffset.x, this.boardOffset.y);
+    };
+    const onUp = () => {
+      this.dragging = false;
+    };
+    this.input.on('pointerdown', onDown);
+    this.input.on('pointermove', onMove);
+    this.input.on('pointerup', onUp);
+    this.input.on('pointerupoutside', onUp);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off('pointerdown', onDown);
+      this.input.off('pointermove', onMove);
+      this.input.off('pointerup', onUp);
+      this.input.off('pointerupoutside', onUp);
+    });
   }
 
-  private buildTile(tile: TileData, gap: number): Phaser.GameObjects.Container | null {
+  /**
+   * Centres the board on the tiles the player can act on, falling back to the
+   * landing site. On a panned floor this keeps the live edge of the expedition
+   * on screen instead of parking the view over explored ground.
+   */
+  private centreOnAction(): void {
+    const frontier = this.manager.fog.frontier();
+    const focus = frontier.length > 0 ? frontier : [this.manager.view.start];
+    const avg = focus.reduce(
+      (acc, tile) => {
+        const p = this.tilePosition(tile);
+        return { x: acc.x + p.x / focus.length, y: acc.y + p.y / focus.length };
+      },
+      { x: 0, y: 0 },
+    );
+    this.centreOnPoint(avg);
+  }
+
+  /** Brings a point into view, clamped to the board's pan limits. */
+  private centreOnPoint(pos: { x: number; y: number }): void {
+    const targetX = this.W / 2 - pos.x;
+    const targetY = (this.hudHeight + this.H - this.bottomBarHeight) / 2 - pos.y;
+    this.boardOffset = {
+      x: Phaser.Math.Clamp(targetX, this.panBounds.minX, this.panBounds.maxX),
+      y: Phaser.Math.Clamp(targetY, this.panBounds.minY, this.panBounds.maxY),
+    };
+    this.gridLayer.setPosition(this.boardOffset.x, this.boardOffset.y);
+  }
+
+  private tilePosition(tile: TileData): { x: number; y: number } {
+    const projected = isoProject(tile.x, tile.y, this.tileSize);
+    return { x: this.gridOrigin.x + projected.x, y: this.gridOrigin.y + projected.y };
+  }
+
+  private buildTile(tile: TileData): Phaser.GameObjects.Container | null {
     if (tile.type === 'BLOCKED') return null;
     const biome = BIOMES_BY_ID[this.manager.view.data.biomeId] ?? biomeForFloor(this.manager.floor);
-    const pos = this.tilePosition(tile, gap);
+    const pos = this.tilePosition(tile);
     const container = this.add.container(pos.x, pos.y);
     const size = this.tileSize;
 
@@ -354,6 +458,7 @@ export class MapScene extends BaseScene {
       const fog = this.add.graphics();
       drawFogCloud(fog, tile, size, biome);
       container.add(fog);
+      container.add(this.buildTileHitArea(tile, size));
       return container;
     }
 
@@ -365,27 +470,31 @@ export class MapScene extends BaseScene {
       container.add(base);
     }
 
+    // Content stands up out of the tile rather than lying flat on it, which is
+    // what makes the board read as a world seen at an angle.
+    const glyphSize = size * 0.5;
+    const glyphY = -size * TILE_RATIO * 0.34;
     const accent = tileAccent(tile.type);
     if (!cleared) {
-      // A soft drop shadow lifts the glyph off the terrain.
       const shadow = this.add.graphics();
-      drawTileGlyph(shadow, tile.type, size * 0.6, 0x000000);
-      shadow.setAlpha(0.3).setPosition(size * 0.035, size * 0.045);
+      drawTileGlyph(shadow, tile.type, glyphSize, 0x000000);
+      shadow.setAlpha(0.32).setPosition(size * 0.03, glyphY + size * 0.05);
       container.add(shadow);
     }
     const glyph = this.add.graphics();
     drawTileGlyph(
       glyph,
       cleared ? 'EMPTY' : tile.type,
-      size * 0.6,
+      glyphSize,
       cleared ? Theme.color.textFaint : lighten(accent, 0.12),
     );
+    glyph.setPosition(0, cleared ? 0 : glyphY);
     glyph.setAlpha(cleared ? 0.4 : tile.state === 'REVEALED' || tile.scouted ? 1 : 0.5);
     container.add(glyph);
 
     if (cleared && tile.id === this.manager.view.data.startTileId) {
       const start = this.add.graphics();
-      drawTileGlyph(start, 'START', size * 0.5, Theme.color.goldDim);
+      drawTileGlyph(start, 'START', size * 0.42, Theme.color.goldDim);
       container.add(start);
     }
 
@@ -396,29 +505,35 @@ export class MapScene extends BaseScene {
 
     if (interactable && !exitLocked) {
       const ring = this.add.graphics();
-      ring.lineStyle(Math.max(2, size * 0.07), Theme.color.goldBright, 1);
-      ring.strokeRoundedRect(-size / 2 - 1, -size / 2 - 1, size + 2, size + 2, Math.max(3, size * 0.15));
+      strokeTileDiamond(ring, size, Theme.color.goldBright, Math.max(2, size * 0.05));
       container.add(ring);
       this.pulseTargets.push(ring);
     } else if (exitLocked && tile.state === 'REVEALED') {
       const ring = this.add.graphics();
-      ring.lineStyle(Math.max(1.5, size * 0.05), Theme.color.bad, 0.6);
-      ring.strokeRoundedRect(-size / 2 - 1, -size / 2 - 1, size + 2, size + 2, Math.max(3, size * 0.15));
+      strokeTileDiamond(ring, size, Theme.color.bad, Math.max(1.5, size * 0.035), 0.6);
       container.add(ring);
     }
 
-    const hit = this.add.rectangle(0, 0, size, size, 0x000000, 0).setInteractive({ useHandCursor: true });
+    container.add(this.buildTileHitArea(tile, size));
+    return container;
+  }
+
+  /** Diamond-shaped tap target, so taps land on the tile you actually see. */
+  private buildTileHitArea(tile: TileData, size: number): Phaser.GameObjects.Zone {
+    const h = size * TILE_RATIO;
+    const zone = this.add.zone(0, 0, size, h);
+    zone.setInteractive(new Phaser.Geom.Polygon(isoDiamondHitArea(size)), Phaser.Geom.Polygon.Contains);
     let downAt = { x: 0, y: 0 };
-    hit.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    zone.on('pointerdown', (p: Phaser.Input.Pointer) => {
       downAt = { x: p.x, y: p.y };
     });
-    hit.on('pointerup', (p: Phaser.Input.Pointer) => {
+    zone.on('pointerup', (p: Phaser.Input.Pointer) => {
+      // A tap that travelled was a pan of the board, not a choice of tile.
       if (Math.hypot(p.x - downAt.x, p.y - downAt.y) > 14) return;
+      if (this.dragMoved > 14) return;
       this.onTileTapped(tile);
     });
-    container.add(hit);
-
-    return container;
+    return zone;
   }
 
   private onTileTapped(tile: TileData): void {
